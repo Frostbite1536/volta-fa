@@ -51,3 +51,4 @@ third_party/*
 .venv/
 tools/
 bench/models.txt
+third_party/pr27997-work/
