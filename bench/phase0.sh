@@ -18,8 +18,8 @@ has() { [[ " $STEPS " == *" $1 "* ]]; }
 # Refuse to produce "baseline" numbers on the wrong hardware or toolchain (INV-PERF-001, INV-ARCH-003).
 gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
 [[ "$gpu" == *V100* || "${FORCE:-0}" == 1 ]] || { echo "GPU is '$gpu', not a V100 (FORCE=1 to override)" >&2; exit 2; }
-ver=$(nvcc --version | sed -n 's/.*release \([0-9]*\)\..*/\1/p')
-[ "$ver" = 12 ] || { echo "nvcc major version is '$ver'; CUDA 12.x required" >&2; exit 2; }
+ver=$(nvcc --version | sed -n 's/.*release \([0-9.]*\),.*/\1/p')
+[ "$ver" = 12.8 ] || [ "${FORCE:-0}" = 1 ] || { echo "nvcc is '$ver'; CUDA 12.8 required (13 dropped sm_70; 12.9: llama.cpp #28416). FORCE=1 to override" >&2; exit 2; }
 ngpu=$(nvidia-smi -L | grep -c V100 || true)
 
 if has env; then
@@ -35,8 +35,11 @@ fi
 if has build; then
   log "build llama.cpp for sm_70"
   cmake -S "$LLAMA" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES=70 -DLLAMA_CURL=OFF > "$OUT/build.log" 2>&1
+    -DCMAKE_CUDA_ARCHITECTURES=70 -DLLAMA_CURL=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON > "$OUT/build.log" 2>&1
   cmake --build "$BUILD" --target llama-bench test-backend-ops llama-cli >> "$OUT/build.log" 2>&1
+  # GGML_CUDA_NCCL defaults ON but silently builds without NCCL if it is not installed.
+  if grep -q "GGML_USE_NCCL" "$BUILD/compile_commands.json" 2>/dev/null; then log "  NCCL: linked"
+  else log "  NCCL: NOT linked (install libnccl2 + libnccl-dev for CUDA 12; -sm tensor nccl runs fall back)"; fi
 fi
 TBO=$BUILD/bin/test-backend-ops; LB=$BUILD/bin/llama-bench
 
@@ -58,6 +61,10 @@ if has bench; then
     # Quantised KV cache only works with FA on.
     "$LB" -m "$m" -dev CUDA0 -ngl 99 -fa on -ctk f16,q8_0,q4_0 -ctv f16,q8_0,q4_0 -p 4096 -n 128 -d 0,16384 \
       -r "$REPS" -o jsonl > "$OUT/lb-$n-kvq.jsonl" 2> "$OUT/lb-$n-kvq.err" || log "  kv-quant sweep failed (see .err)"
+    # Tiny batches at depth: Q*GQA <= 16 routes to the non-tensor-core TILE kernel on Volta
+    # (fattn.cu:673-681). This is the speculative-decoding verify shape (research gap 1).
+    "$LB" -m "$m" -dev CUDA0 -ngl 99 -fa on -p 1,2,4,8,16 -n 0 -d 4096,32768 \
+      -r "$REPS" -o jsonl > "$OUT/lb-$n-smallbatch.jsonl" 2> "$OUT/lb-$n-smallbatch.err" || log "  small-batch sweep failed (see .err)"
     # Ubatch size changes the Q-tile count per FA call during prefill.
     "$LB" -m "$m" -dev CUDA0 -ngl 99 -fa on -ub 256,512,1024,2048 -p 4096 -n 0 -d 0,16384 \
       -r "$REPS" -o jsonl > "$OUT/lb-$n-ubatch.jsonl" 2> "$OUT/lb-$n-ubatch.err" || log "  ubatch sweep failed (see .err)"
@@ -67,7 +74,16 @@ fi
 if has multi && [ "$ngpu" -ge 2 ] && [ -f bench/models.txt ]; then
   m=$(grep -v '^#' bench/models.txt | head -1); n=$(basename "$m" .gguf)
   log "dual-GPU split modes on $n"
-  "$LB" -m "$m" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm layer,row,tensor -p 512,4096 -n 128 -d 0,16384 \
-    -r "$REPS" -o jsonl > "$OUT/lb-$n-multi.jsonl" 2> "$OUT/lb-$n-multi.err" || log "  multi sweep failed (see .err)"
+  # -sm row no longer exists for CUDA (llama.cpp #24216). Tensor split all-reduce is NCCL or an
+  # internal host-staged fallback; GGML_CUDA_P2P only enables peer access for plain copies.
+  "$LB" -m "$m" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm layer -p 512,4096 -n 128 -d 0,16384 \
+    -r "$REPS" -o jsonl > "$OUT/lb-$n-multi-layer.jsonl" 2> "$OUT/lb-$n-multi-layer.err" || log "  layer split failed"
+  # GGML_CUDA_P2P is presence-checked (getenv != nullptr): "=0" would ENABLE it, so unset for off.
+  for ar in nccl internal; do for p2p in 0 1; do
+    p2penv=(-u GGML_CUDA_P2P); [ "$p2p" = 1 ] && p2penv=(GGML_CUDA_P2P=1)
+    env "${p2penv[@]}" GGML_CUDA_ALLREDUCE=$ar "$LB" -m "$m" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm tensor \
+      -p 512,4096 -n 128 -d 0,16384 -r "$REPS" -o jsonl > "$OUT/lb-$n-multi-tensor-$ar-p2p$p2p.jsonl" \
+      2> "$OUT/lb-$n-multi-tensor-$ar-p2p$p2p.err" || log "  tensor split ($ar, p2p=$p2p) failed"
+  done; done
 fi
 log "done: $OUT"

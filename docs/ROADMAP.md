@@ -10,10 +10,15 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 **Includes**:
 - P-1 Toolchain without a GPU: NVRTC + ptxas static reports for sm_70 (`bin/sm70-report.py`). ✅
 - P-2 Reference + tests: CPU attention reference with the full shape/edge-case matrix, and a CPU *tiled online-softmax model* that copies the kernel's numerics (FP16 P, FP32 m/l, tile order). It gives an empirical error budget before any GPU code exists, so tolerances come from data rather than guesses.
-- P-3 Desk research: how llama.cpp picks the FA kernel on cc 7.0, its tile configs, history, multi-GPU modes; a ranked list of gaps to measure.
+- P-3 Desk research: how llama.cpp picks the FA kernel on cc 7.0, its tile configs, history, multi-GPU modes; a ranked list of gaps to measure. ✅ `docs/research/llama-cpp-volta-baseline.md`. Headline candidates (unmeasured):
+  1. Small-batch attention at long context with GQA ≥ 4 (decode with GQA, speculative verify) routes to the non-tensor-core TILE kernel on Volta (`fattn.cu:673-681`). The llama-superfast-v100 fork moves KV ≥ 4096 to MMA.
+  2. Quantised-KV decode with GQA ≥ 4 converts the whole K/V cache to F16 on every call on the TILE path.
+  3. Volta reuses Ampere tile configs ("TODO tune specifically for Volta", `fattn-mma-f16.cuh:126`); D=256 prefill looks smem/spill-limited. Open PR #27997 claims +20–28% at 65–100K depth with one Volta config row.
+  4. Multi-GPU: `-sm tensor` all-reduce is NCCL or a host-staged fallback; upstream has no direct P2P all-reduce.
+  Prior art: PR #17505 (Volta MMA FA, 1.3–3.0× over the old WMMA kernel); issue #28037 (config tuning didn't help decode).
 - P-4 Planning calculator: smem bytes, register estimate and theoretical occupancy for V100 for a candidate tile config (`bin/plan-tiles.py`). ✅
 - P-5 Phase 0 measurement kit: `bench/phase0.sh` runs FA support/correctness/perf via test-backend-ops plus the llama-bench grid (depth, KV quant, ubatch, dual-GPU split modes) into `bench/results/`. Drafted, not yet run (needs the box).
-- P-6 Kernel design docs for the top gap(s) from P-3, with static sm70 reports for draft kernels (regs/spill only, no timing).
+- P-6 Kernel design docs for the top gap(s) from P-3, with static sm70 reports for draft kernels (regs/spill only, no timing). First candidates: (a) a tensor-core small-batch/GQA decode kernel (gap 1, and gap 2 if it dequantises K/V tiles in-kernel instead of converting the whole cache), (b) a Volta-specific D=256 prefill config (gap 3; may be an upstream config contribution rather than a new kernel).
 - P-7 P2P code that needs no hardware: topology probe, capability check with staged fallback, bandwidth test driver.
 **Excludes**: any performance claim; tuning by guesswork.
 **Optional**: rent a single cloud V100 for a few hours to run P-5 early. Cloud multi-V100 instances usually have NVLink, so they say nothing about PCIe P2P.
@@ -23,7 +28,7 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 **Goal**: Find where the existing Volta path is actually slow.
 **Includes**: run the P-5 kit: `llama-bench` over context depth (`-d 0,4096,16384,32768,65536`), prompt sizes, batch sizes, FA on/off, a few models (different head dims and GQA ratios), f16 and quantised KV; `test-backend-ops -o FLASH_ATTN_EXT -b CUDA0 perf` for kernel-level numbers; nsys timeline of a long-context prefill; ncu on the FA kernels; `nvidia-smi topo -m` + P2P bandwidth test.
 **Excludes**: writing new kernels.
-**Exit**: `bench/BASELINE.md` + `profiles/phase0-*.txt`, and a written go/no-go per shape naming the measured bottleneck. If no shape has a meaningful gap, redirect the project (for example to P2P/tensor-parallel, quantised-KV FA, or contributing Volta tuning upstream).
+**Exit**: `bench/BASELINE.md` + `profiles/phase0-*.txt`, and a written go/no-go per shape naming the measured bottleneck. Also re-check the upstream state (#27997, superfast fork) so we don't rebuild what has landed. If no shape has a meaningful gap, redirect the project (for example to P2P/tensor-parallel, quantised-KV FA, or contributing Volta tuning upstream).
 
 ## Phase 1: Standalone fused attention kernel (only for "go" shapes)
 

@@ -13,9 +13,9 @@ Non-negotiable rules. A change that violates one is a bug or an explicit product
 **Enforcement**: `bin/sm70-report.py` compiles at `compute_70` (rejects most sm_75+ intrinsics); `bin/check-forbidden.sh` greps inline PTX and arch-guarded code; CI runs both.
 
 ### INV-ARCH-003: CUDA 12.x toolchain
-**Rule**: Build with CUDA 12.x (12.9 pinned) and an R580-or-older driver branch. Never CUDA 13+.
-**Rationale**: CUDA 13.0 removed offline compilation support for sm_70 (and NVRTC 12.9 already warns it is deprecated); R580 is the last driver branch that supports Volta. See docs/TOOLCHAIN.md.
-**Enforcement**: `bin/sm70-report.py` pins the NVRTC 12.9 wheel; the V100 box install doc pins the toolkit.
+**Rule**: Build with CUDA 12.8 and an R580-or-older driver branch. Never CUDA 13+. Do not move to 12.9 until llama.cpp #28416 is resolved.
+**Rationale**: CUDA 13.0 removed offline compilation support for sm_70 (and NVRTC 12.x already warns it is deprecated). llama.cpp #28416 (open, 2026-09): sm_70 builds made with 12.9.86 fail weight-buffer allocation on an empty 32 GB V100; the same source built with 12.8.93 works; R580 is the last driver branch that supports Volta. See docs/TOOLCHAIN.md.
+**Enforcement**: `bin/sm70-report.py` uses the pinned NVRTC 12.8 wheel; the V100 box install doc pins the toolkit.
 
 ### INV-ARCH-002: Per-block shared memory budget
 **Rule**: Static + dynamic shared memory per block ≤ 96 KB, and occupancy target per kernel is documented next to its launch config.
@@ -81,4 +81,5 @@ Non-negotiable rules. A change that violates one is a bug or an explicit product
 | Date | Invariant | Change | Justification |
 | --- | --- | --- | --- |
 | 2026-10-09 | all | Initial draft | Repo created |
+| 2026-10-09 | ARCH-003 | Pin 12.8 instead of 12.9 | llama.cpp #28416 |
 | 2026-10-09 | ARCH-001, ARCH-003, NUM-002, NUM-004, PERF-002 | Allow PTX m8n8k4; forbid ldmatrix; pin CUDA 12.x; define masked-row output and causal alignment | Review: m8n8k4 is Volta-native and what llama.cpp uses; CUDA 13 dropped sm_70 |
