@@ -1,0 +1,52 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build
+build/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.ptx
+*.cubin
+*.fatbin
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Models and large artefacts (never commit weights)
+*.gguf
+*.safetensors
+*.bin
+models/
+
+# Profiler output: summaries are committed under profiles/, raw reports are not
+*.nsys-rep
+*.ncu-rep
+*.qdrep
+*.sqlite
+profiles/raw/
+
+# Agent receipts: logs stay local; ticket results are summarized in PRs
+state/receipts/*.log
+state/receipts/*.md
+!state/receipts/.gitkeep
+
+# Local overrides
+CLAUDE.local.md
+.worktrees/
+third_party/*
+!third_party/.gitkeep
+!third_party/patches/
+
+# Local toolchain (docs/TOOLCHAIN.md)
+.venv/
+tools/

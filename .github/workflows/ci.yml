@@ -1,0 +1,32 @@
+name: ci
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbidden sm_75+ features
+        run: bin/check-forbidden.sh
+      - name: Toolchain (CPU build + NVRTC/ptxas for static sm_70 reports, CUDA 12.9 pinned)
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install -q cmake ninja shellcheck-py \
+            "nvidia-cuda-nvcc-cu12==12.9.*" "nvidia-cuda-nvrtc-cu12==12.9.*" \
+            "nvidia-cuda-runtime-cu12==12.9.*" "nvidia-cuda-cccl-cu12==12.9.*"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Shellcheck
+        run: shellcheck -x bin/*.sh
+      - name: CPU build and tests
+        run: |
+          cmake -S . -B build -G Ninja
+          cmake --build build
+          ctest --test-dir build --output-on-failure
+      - name: Static sm_70 reports (fails on spills / >96 KB smem)
+        run: |
+          shopt -s nullglob globstar
+          rc=0
+          for f in src/**/*.cu; do echo "== $f"; python bin/sm70-report.py "$f" || rc=1; done
+          exit $rc
+  # Timing and parity on real sm_70 run manually on the V100 box; hosted runners have no V100.
