@@ -5,7 +5,7 @@ Fused FP16 attention + PCIe P2P kernels for NVIDIA Volta (sm_70). CUDA C++17, CM
 ## Hard rules (every agent, every ticket)
 
 - **Volta sm_70 ONLY.** Tensor cores via `nvcuda::wmma` (16×16×16 half) or PTX `mma.sync.aligned.m8n8k4`. Do NOT use BF16, FP8, `cp.async`, `ldmatrix`, `mma.sync` m16n8k*, TMA, clusters, or code copied from FlashAttention-2/3. If you think you need one, STOP and say so.
-- **CUDA 12.x only** (12.9). CUDA 13 dropped sm_70.
+- **CUDA 12.x only** (12.8; 12.9 has an open sm_70 weight-allocation bug, llama.cpp #28416). CUDA 13 dropped sm_70.
 - Every kernel change reports registers, spill stores/loads, stack and smem (`bin/sm70-report.py`, or `--ptxas-options=-v` on the V100 box). Spill > 0 is a failing result.
 - Never write the N×N score matrix to global memory in the fused path.
 - Correctness before speed: compare against the reference in `tests/`. Do not loosen tolerances or edit existing tests to pass; report the real error.

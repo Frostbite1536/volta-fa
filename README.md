@@ -50,7 +50,7 @@ cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --
 python bin/sm70-report.py src/attention/<file>.cu
 ```
 
-On the V100 box (CUDA 12.9):
+On the V100 box (CUDA 12.8):
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_CUDA_ARCHITECTURES=70 && cmake --build build && ctest --test-dir build --output-on-failure
