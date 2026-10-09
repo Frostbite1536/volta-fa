@@ -1,0 +1,14 @@
+Upstream llama.cpp 79e2e74 FA MMA kernels, ncols=64 instance files, sm_70, nvcc 12.8.93 (cuobjdump -res-usage).
+D=256 row reflects the last variant built (pr_k64_c64); all other head dims are upstream as-is.
+STACK = spills + local arrays (upper bound on spilling). 24-register entries are near-empty instances.
+
+DKQ/DV   kernels  regs     stack (B)
+64/64         8   24-240   40-96
+80/80         8   24-255   40-96
+96/96         8   24-255   40-96
+112/112        8   24-255   40-96
+128/128        8   255-255   48-128
+192/128        2   24-254   40-48
+256/256        9   252-255   48-160
+512/512        6   255-255   544-568
+576/512        2   24-255   40-576

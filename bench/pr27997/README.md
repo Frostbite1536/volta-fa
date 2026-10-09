@@ -50,6 +50,9 @@ range over ncols1.
 | `pr_comb64` | 254–255 | 48–112 B | 50.1–54.5 KB | 1 |
 | `pr_k64_c64` | 252–255 | 48–160 B | 42.1–46.5 KB | 2 |
 
+Artifact: `bench/results/pr27997-static-20261009-182401/` (summary, per-variant `cuobjdump` output, and a head-dim survey of
+upstream's other ncols=64 kernels: D=512 also carries 544–568 B of stack on Volta).
+
 This confirms the PR's register claim on every D=256 ncols=64 instance (it reported one kernel:
 552 → 56 B). Two blocks/SM at 255 registers × 128 threads uses exactly the 64K-register file.
 

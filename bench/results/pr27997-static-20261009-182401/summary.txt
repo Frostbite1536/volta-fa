@@ -1,0 +1,33 @@
+llama.cpp 79e2e74eb, Build cuda_12.8.r12.8/compiler.35583870_0
+== upstream
+      1 REG:255 STACK:464
+      1 REG:255 STACK:472
+      3 REG:255 STACK:480
+      1 REG:255 STACK:488
+      1 REG:255 STACK:576
+      2 REG:255 STACK:640
+== pr
+      2 REG:253 STACK:48
+      2 REG:254 STACK:48
+      2 REG:255 STACK:112
+      2 REG:255 STACK:56
+      1 REG:255 STACK:96
+== comb64
+      1 REG:255 STACK:464
+      1 REG:255 STACK:472
+      3 REG:255 STACK:480
+      1 REG:255 STACK:488
+      1 REG:255 STACK:576
+      2 REG:255 STACK:640
+== pr_comb64
+      2 REG:254 STACK:48
+      2 REG:255 STACK:112
+      2 REG:255 STACK:48
+      2 REG:255 STACK:56
+      1 REG:255 STACK:96
+== pr_k64_c64
+      2 REG:252 STACK:48
+      1 REG:254 STACK:48
+      1 REG:255 STACK:112
+      2 REG:255 STACK:160
+      3 REG:255 STACK:48
