@@ -51,7 +51,7 @@ TBO=$BUILD/bin/test-backend-ops; LB=$BUILD/bin/llama-bench
 # Which FLASH_ATTN_EXT cases the CUDA backend even supports on cc 7.0 (model-compatibility gaps).
 has support && { log "FA support matrix"; "$TBO" support -o FLASH_ATTN_EXT -b CUDA0 > "$OUT/fa-support.txt" 2>&1 || true; }
 # Correctness vs CPU (a Volta-path bug is itself a finding).
-has test && { log "FA correctness"; "$TBO" test -o FLASH_ATTN_EXT -b CUDA0 > "$OUT/fa-test.txt" 2>&1 || true; grep -E "FAIL|passed" "$OUT/fa-test.txt" | tail -3 | tee -a "$OUT/run.log"; }
+has test && { log "FA correctness"; "$TBO" test -o FLASH_ATTN_EXT -b CUDA0 > "$OUT/fa-test.txt" 2>&1 || true; { grep -E "FAIL|passed" "$OUT/fa-test.txt" || echo "  (no pass/fail summary found)"; } | tail -3 | tee -a "$OUT/run.log"; }
 # Kernel-level timing of every FA test case.
 has perf && { log "FA kernel perf"; "$TBO" perf -o FLASH_ATTN_EXT -b CUDA0 --output sql > "$OUT/fa-perf.sql" 2> "$OUT/fa-perf.err" || true; }
 
@@ -81,7 +81,7 @@ if has multi && [ "$ngpu" -ge 2 ] && [ -f bench/models.txt ]; then
   log "dual-GPU split modes on $n"
   # -sm row no longer exists for CUDA (llama.cpp #24216). Tensor split all-reduce is NCCL or an
   # internal host-staged fallback; GGML_CUDA_P2P only enables peer access for plain copies.
-  "$LB" -m "$m" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm layer -p 512,4096 -n 128 -d 0,16384 \
+  env -u GGML_CUDA_P2P -u GGML_CUDA_ALLREDUCE "$LB" -m "$m" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm layer -p 512,4096 -n 128 -d 0,16384 \
     -r "$REPS" -o jsonl > "$OUT/lb-$n-multi-layer.jsonl" 2> "$OUT/lb-$n-multi-layer.err" || log "  layer split failed"
   # GGML_CUDA_P2P is presence-checked (getenv != nullptr): "=0" would ENABLE it, so unset for off.
   for ar in nccl internal; do for p2p in 0 1; do

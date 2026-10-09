@@ -72,7 +72,7 @@ for v in $VARIANTS; do
 
     log "correctness $v"
     "$src/build/bin/test-backend-ops" test -b CUDA0 -o FLASH_ATTN_EXT -p 'hsk=256' > "$OUT/$v.test.txt" 2>&1 || true
-    grep -E "tests passed|FAIL" "$OUT/$v.test.txt" | tail -3 | tee -a "$OUT/run.log"
+    { grep -E "tests passed|FAIL" "$OUT/$v.test.txt" || echo "  (no pass/fail summary found)"; } | tail -3 | tee -a "$OUT/run.log"
 
     log "kernel perf $v"
     "$src/build/bin/test-backend-ops" perf -b CUDA0 -o FLASH_ATTN_EXT -p 'hsk=256,hsv=256,nh=4,.*nb=512' \
