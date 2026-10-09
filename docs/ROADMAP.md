@@ -9,7 +9,7 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 **Goal**: Make day one on the hardware about measuring, not setup.
 **Includes**:
 - P-1 Toolchain without a GPU: NVRTC + ptxas static reports for sm_70 (`bin/sm70-report.py`). ✅
-- P-2 Reference + tests: CPU attention reference with the full shape/edge-case matrix, and a CPU *tiled online-softmax model* that copies the kernel's numerics (FP16 P, FP32 m/l, tile order). It gives an empirical error budget before any GPU code exists, so tolerances come from data rather than guesses.
+- P-2 Reference + tests: CPU attention reference with the full shape/edge-case matrix, and a CPU *tiled online-softmax model* that copies the kernel's numerics (FP16 P, FP32 m/l, tile order). It gives an empirical error budget before any GPU code exists, so tolerances come from data rather than guesses. ✅ Tolerances set in `include/volta_fa/tolerance.h`; FP16 QK accumulate ruled out (INV-NUM-005).
 - P-3 Desk research: how llama.cpp picks the FA kernel on cc 7.0, its tile configs, history, multi-GPU modes; a ranked list of gaps to measure. ✅ `docs/research/llama-cpp-volta-baseline.md`. Headline candidates (unmeasured):
   1. Small-batch attention at long context with GQA ≥ 4 (decode with GQA, speculative verify) routes to the non-tensor-core TILE kernel on Volta (`fattn.cu:673-681`). The llama-superfast-v100 fork moves KV ≥ 4096 to MMA.
   2. Quantised-KV decode with GQA ≥ 4 converts the whole K/V cache to F16 on every call on the TILE path.

@@ -40,7 +40,7 @@
 | --- | --- | --- |
 | WMMA vs PTX m8n8k4 | open, leaning m8n8k4 (known fragment layout; llama.cpp precedent) | design doc + static reports |
 | Tile sizes (BR, BC) per head dim (64/80/96/128/256) | open | planning calculator, then ncu |
-| FP16 vs FP32 accumulate for S | open | error vs. reference + speed |
+| FP16 vs FP32 accumulate for S | **decided: FP32** (INV-NUM-005) | `docs/research/error-budget-2026-10-09.txt` |
 | Bank-conflict padding scheme for K/V shared tiles | open | ncu `l1tex__data_bank_conflicts` |
 | Single-kernel vs. split-KV for long context / small batch | open | occupancy at 32k+ |
 | P2P: `cudaMemcpyPeerAsync` vs. IPC handles | open; IPC only matters across processes, and llama.cpp is one process | Phase 3 topology tests |

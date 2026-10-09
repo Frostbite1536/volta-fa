@@ -32,6 +32,11 @@ Non-negotiable rules. A change that violates one is a bug or an explicit product
 **Rule**: Running max and sum are kept in FP32; fully masked rows produce O = 0 and LSE = -inf, never NaN; no intermediate overflows for logits up to the FP16 range.
 **Enforcement**: `tests/` includes fully-masked-row, very-large-logit and all-equal-logit cases.
 
+### INV-NUM-005: QK^T accumulates in FP32
+**Rule**: The S = QK^T product accumulates in FP32 (WMMA float accumulator, or m8n8k4 `.f32` accumulate). P and V may be FP16.
+**Rationale**: The CPU numerics model (`docs/research/error-budget-2026-10-09.txt`) shows FP16 QK accumulation reaching 0.46 absolute / 11% relative output error with LLM-style outlier channels, against ~1e-3 with FP32 accumulation.
+**Enforcement**: design review; parity tests with the outlier distribution; the tolerances in `include/volta_fa/tolerance.h` cannot be met with FP16 accumulation.
+
 ### INV-NUM-004: Causal alignment is bottom-right
 **Rule**: With `causal`, query row `i` (0-based) may attend key `j` iff `j <= i + (seq_kv - seq_q)`. This matches a KV cache where the new queries are the last `seq_q` positions.
 **Rationale**: Top-left alignment is the classic silent bug when `seq_q < seq_kv` (decode, chunked prefill).
@@ -39,7 +44,7 @@ Non-negotiable rules. A change that violates one is a bug or an explicit product
 
 ### INV-NUM-003: Reference parity
 **Rule**: Output matches an FP32 reference within the documented tolerance for every supported shape (head dim, GQA ratio, causal/non-causal, seq lens including non-multiples of the tile).
-**Enforcement**: `ctest`. Tolerances live in one header and change only with a manager decision.
+**Enforcement**: `ctest`. Tolerances live in `include/volta_fa/tolerance.h` (element-wise `|o-ref| <= 1e-3 + 2e-3*|ref|`, LSE `1e-3`), derived from the CPU numerics model, and change only with a manager decision. `error_budget` fails if the kernel-equivalent model cannot meet them.
 
 ## Performance honesty invariants
 
@@ -81,5 +86,6 @@ Non-negotiable rules. A change that violates one is a bug or an explicit product
 | Date | Invariant | Change | Justification |
 | --- | --- | --- | --- |
 | 2026-10-09 | all | Initial draft | Repo created |
+| 2026-10-09 | NUM-003, NUM-005 | Set tolerances; forbid FP16 QK accumulate | error_budget table (ticket p2-reference) |
 | 2026-10-09 | ARCH-003 | Pin 12.8 instead of 12.9 | llama.cpp #28416 |
 | 2026-10-09 | ARCH-001, ARCH-003, NUM-002, NUM-004, PERF-002 | Allow PTX m8n8k4; forbid ldmatrix; pin CUDA 12.x; define masked-row output and causal alignment | Review: m8n8k4 is Volta-native and what llama.cpp uses; CUDA 13 dropped sm_70 |
