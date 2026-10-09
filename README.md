@@ -2,7 +2,7 @@
 
 Fused FP16 attention and PCIe peer-to-peer tensor-parallel kernels for NVIDIA Volta (sm_70, V100), written in CUDA C++ and meant to plug into llama.cpp.
 
-**Status: scaffold.** No kernels yet. Nothing here is benchmarked. Every performance claim in this repo must link to a file in `profiles/` or `bench/results/`; until it does, treat it as a hypothesis.
+**Status: pre-hardware.** No custom kernels yet, and nothing has been benchmarked on a V100. What exists: a CPU attention reference and numerics model with measured tolerances, static sm_70 register/spill reports, P2P host code (staged path tested on a real GPU), and ready-to-run measurement kits for llama.cpp upstream, the llama-superfast-v100 fork and PR #27997 ([docs/CLOUD_V100.md](docs/CLOUD_V100.md)). Every performance claim in this repo must link to a file in `profiles/` or `bench/results/`; until it does, treat it as a hypothesis.
 
 ## Why
 
