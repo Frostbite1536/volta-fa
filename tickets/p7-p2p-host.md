@@ -1,6 +1,6 @@
 # Ticket p7-p2p-host: topology probe, peer copy with staged fallback, bandwidth tool
 
-Your current directory is a git worktree of volta-fa (branch `p7-p2p-host`, based on `main` @ `@SHA@`). Work only here.
+Your current directory is a git worktree of volta-fa (branch `p7-p2p-host`, based on `main` @ `cec21bb`). Work only here.
 
 ## Rules (mandatory, repeated in every ticket)
 - Target is NVIDIA Volta sm_70 ONLY, CUDA 12.x. This ticket is HOST code only (C++17 calling the CUDA runtime API). Write no `__global__` kernels and no `.cu` files.
