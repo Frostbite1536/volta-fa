@@ -41,10 +41,11 @@ volta-fa CPU tests.
 | # | Command | Needs | Time (rough) | Answers |
 | --- | --- | --- | --- | --- |
 | 1 | `STEPS="env build support test perf" bench/phase0.sh` | nothing | build 15–30 min, runs ~10 min | which FA cases Volta supports/fails; kernel timings incl. D=256 decode and quantised KV |
-| 2 | `bench/pr27997/run.sh` | nothing | 4 builds (ccache makes 2–4 fast) | `pr` vs upstream vs `comb64`/`pr_comb64`: regs/stack, correctness, D=256 prefill kernel time |
-| 3 | `MODEL=… bench/pr27997/run.sh` | a D=256 GGUF | +llama-bench per variant | end-to-end prefill at 4k/16k/64k depth |
-| 4 | `bench/phase0.sh` with `bench/models.txt` | 2–4 GGUFs | ~30–60 min | depth / KV-quant / small-batch / ubatch sweeps |
-| 5 | `bin/profile-ncu.sh …` | Volta-capable ncu + profiling permission | as needed | only if step 3 of setup said ncu works |
+| 2 | `LLAMA=third_party/llama-superfast-v100 EXTRA_CMAKE="-DGGML_CUDA_CUB_3DOT2=ON -DGGML_NATIVE=OFF" STEPS="env build support test perf" bench/phase0.sh` | nothing | one more build | the same kernel-level numbers for the superfast fork (pinned in `bench/SUPERFAST_COMMIT`): does it beat upstream, and on which shapes? Add the gcc-14 flags setup printed if the default compiler fails |
+| 3 | `bench/pr27997/run.sh` | nothing | 4 builds (ccache makes 2–4 fast) | `pr` vs upstream vs `comb64`/`pr_comb64`: regs/stack, correctness, D=256 prefill kernel time |
+| 4 | `MODEL=… bench/pr27997/run.sh` | a D=256 GGUF | +llama-bench per variant | end-to-end prefill at 4k/16k/64k depth |
+| 5 | `bench/phase0.sh` with `bench/models.txt`, for upstream and (with `LLAMA=…`) the fork | 2–4 GGUFs | ~30–60 min each | depth / KV-quant / small-batch / ubatch sweeps; small-batch at depth is where the fork re-routes decode to tensor cores |
+| 6 | `bin/profile-ncu.sh …` | Volta-capable ncu + profiling permission | as needed | only if step 3 of setup said ncu works |
 
 Use `tmux` so a dropped SSH session does not kill a run.
 

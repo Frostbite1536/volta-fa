@@ -2,6 +2,8 @@
 # phase0.sh: Phase 0 baseline on the V100 box (docs/ROADMAP.md). Run from the repo root.
 #   bench/phase0.sh                 full run: env, build, FA support/correctness/perf, llama-bench grid
 #   STEPS="env perf" bench/phase0.sh   run only some steps (env build support test perf bench multi)
+#   LLAMA=third_party/llama-superfast-v100 EXTRA_CMAKE="-DGGML_CUDA_CUB_3DOT2=ON" bench/phase0.sh
+#                                      same kit against another llama.cpp tree (results tagged by tree name)
 # Models: one GGUF path per line in bench/models.txt (see bench/models.example.txt).
 # Output: bench/results/phase0-<date>-<host>/ (commit the small text/csv/jsonl files, never models).
 set -euo pipefail
@@ -10,7 +12,10 @@ LLAMA=${LLAMA:-third_party/llama.cpp}
 BUILD=$LLAMA/build-sm70
 STEPS=${STEPS:-"env build support test perf bench multi"}
 REPS=${REPS:-3}
-OUT=bench/results/phase0-$(date +%Y%m%d-%H%M)-$(hostname -s)
+TAG=${TAG:-$(basename "$LLAMA")}
+EXTRA_CMAKE=${EXTRA_CMAKE:-}
+read -ra EXTRA <<< "$EXTRA_CMAKE"
+OUT=bench/results/phase0-$TAG-$(date +%Y%m%d-%H%M)-$(hostname -s)
 mkdir -p "$OUT"
 log() { echo "[$(date +%T)] $*" | tee -a "$OUT/run.log"; }
 has() { [[ " $STEPS " == *" $1 "* ]]; }
@@ -25,7 +30,7 @@ ngpu=$(nvidia-smi -L | grep -c V100 || true)
 if has env; then
   log "env"
   { echo "date: $(date -Is)"; echo "host: $(hostname)"; echo "volta-fa: $(git rev-parse --short HEAD)"
-    echo "llama.cpp: $(git -C "$LLAMA" rev-parse HEAD)"; nvcc --version | tail -2; uname -r
+    echo "llama.cpp tree: $LLAMA ($TAG) $(git -C "$LLAMA" rev-parse HEAD)"; echo "extra cmake: $EXTRA_CMAKE"; nvcc --version | tail -2; uname -r
     nvidia-smi --query-gpu=index,name,driver_version,pcie.link.gen.max,pcie.link.width.max,clocks.max.sm,clocks.max.mem,power.limit,memory.total --format=csv
     echo; nvidia-smi topo -m; echo; nvidia-smi topo -p2p r 2>/dev/null || true
     command -v ncu >/dev/null && ncu --version | tail -1; command -v nsys >/dev/null && nsys --version
@@ -35,7 +40,7 @@ fi
 if has build; then
   log "build llama.cpp for sm_70"
   cmake -S "$LLAMA" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES=70 -DLLAMA_CURL=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON > "$OUT/build.log" 2>&1
+    -DCMAKE_CUDA_ARCHITECTURES=70 -DLLAMA_CURL=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "${EXTRA[@]}" > "$OUT/build.log" 2>&1
   cmake --build "$BUILD" --target llama-bench test-backend-ops llama-cli >> "$OUT/build.log" 2>&1
   # GGML_CUDA_NCCL defaults ON but silently builds without NCCL if it is not installed.
   if grep -q "GGML_USE_NCCL" "$BUILD/compile_commands.json" 2>/dev/null; then log "  NCCL: linked"

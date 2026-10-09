@@ -38,6 +38,16 @@ git -C third_party/llama.cpp fetch -q origin "$commit" 2>/dev/null || true
 git -C third_party/llama.cpp checkout -q --detach "$commit"
 git -C third_party/llama.cpp log -1 --format='llama.cpp %h %cs %s'
 
+log "llama-superfast-v100 fork at the pinned commit (A/B against upstream in Phase 0)"
+fcommit=$(cat bench/SUPERFAST_COMMIT)
+if [ ! -d third_party/llama-superfast-v100/.git ]; then
+    git clone -q --filter=blob:none https://github.com/mylordmonkeyman/llama-superfast-v100.git third_party/llama-superfast-v100
+fi
+git -C third_party/llama-superfast-v100 checkout -q --detach "$fcommit"
+# The fork's README builds with gcc-14 (Ubuntu 24.04 has it; 22.04 does not without a PPA).
+if $SUDO apt-get install -y -qq gcc-14 g++-14 > /dev/null 2>&1; then log "  gcc-14 installed (add -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CUDA_HOST_COMPILER=g++-14 to EXTRA_CMAKE)"
+else log "  gcc-14 unavailable: try the fork with the default compiler"; fi
+
 log "profiler capabilities"
 if command -v ncu > /dev/null; then
     ncu --version | tail -1
@@ -57,3 +67,4 @@ echo
 echo "next: export PATH=/usr/local/cuda-12.8/bin:\$PATH"
 echo "      STEPS=\"env build support test perf\" bench/phase0.sh     # no models needed"
 echo "      bench/pr27997/run.sh"
+echo "      LLAMA=third_party/llama-superfast-v100 EXTRA_CMAKE=\"-DGGML_CUDA_CUB_3DOT2=ON -DGGML_NATIVE=OFF\" STEPS=\"env build support test perf\" bench/phase0.sh"
