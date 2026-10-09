@@ -21,7 +21,7 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 - P-6 Kernel design docs for the top gap(s) from P-3, with static sm70 reports for draft kernels (regs/spill only, no timing). First candidates: (a) a tensor-core small-batch/GQA decode kernel (gap 1, and gap 2 if it dequantises K/V tiles in-kernel instead of converting the whole cache), (b) a Volta-specific D=256 prefill config (gap 3; may be an upstream config contribution rather than a new kernel).
 - P-7 P2P code that needs no hardware: topology probe, capability check with staged fallback, bandwidth test driver.
 **Excludes**: any performance claim; tuning by guesswork.
-**Optional**: rent a single cloud V100 for a few hours to run P-5 early. Cloud multi-V100 instances usually have NVLink, so they say nothing about PCIe P2P.
+**Cloud V100 (planned 2026-10-09/10)**: runbook in `docs/CLOUD_V100.md`; runs P-5 and the PR #27997 A/B (`bench/pr27997/`) early. Cloud multi-V100 instances usually have NVLink, so they say nothing about PCIe P2P.
 
 ## Phase 0: Baseline and gap analysis (first week on hardware)
 
