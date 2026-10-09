@@ -76,7 +76,7 @@ for v in $VARIANTS; do
 
     log "kernel perf $v"
     "$src/build/bin/test-backend-ops" perf -b CUDA0 -o FLASH_ATTN_EXT -p 'hsk=256,hsv=256,nh=4,.*nb=512' \
-        --output csv > "$OUT/$v.perf.csv" 2> "$OUT/$v.perf.err" || true
+        --output sql > "$OUT/$v.perf.sql" 2> "$OUT/$v.perf.err" || true
 
     if [ -n "${MODEL:-}" ]; then
         log "llama-bench $v"

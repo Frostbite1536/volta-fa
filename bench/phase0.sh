@@ -53,7 +53,7 @@ has support && { log "FA support matrix"; "$TBO" support -o FLASH_ATTN_EXT -b CU
 # Correctness vs CPU (a Volta-path bug is itself a finding).
 has test && { log "FA correctness"; "$TBO" test -o FLASH_ATTN_EXT -b CUDA0 > "$OUT/fa-test.txt" 2>&1 || true; grep -E "FAIL|passed" "$OUT/fa-test.txt" | tail -3 | tee -a "$OUT/run.log"; }
 # Kernel-level timing of every FA test case.
-has perf && { log "FA kernel perf"; "$TBO" perf -o FLASH_ATTN_EXT -b CUDA0 --output csv > "$OUT/fa-perf.csv" 2> "$OUT/fa-perf.err" || true; }
+has perf && { log "FA kernel perf"; "$TBO" perf -o FLASH_ATTN_EXT -b CUDA0 --output sql > "$OUT/fa-perf.sql" 2> "$OUT/fa-perf.err" || true; }
 
 if has bench; then
   [ -f bench/models.txt ] || { log "no bench/models.txt; skipping llama-bench"; exit 0; }

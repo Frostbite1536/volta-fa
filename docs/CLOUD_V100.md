@@ -58,5 +58,14 @@ tar czf results.tgz bench/results
 scp <host>:volta-fa/results.tgz . && tar xzf results.tgz -C ~/Github/volta-fa
 ```
 
-Commit the text/csv/jsonl results (they are small). Never commit models or raw `.ncu-rep`.
+Tables for the write-up:
+
+```bash
+R=bench/results/pr27997-<stamp>
+python3 bench/analyze.py tbo $R/upstream.perf.sql $R/pr.perf.sql $R/comb64.perf.sql $R/pr_comb64.perf.sql
+python3 bench/analyze.py tbo bench/results/phase0-llama.cpp-*/fa-perf.sql bench/results/phase0-llama-superfast-v100-*/fa-perf.sql --labels upstream,superfast
+python3 bench/analyze.py lb <upstream>.jsonl <fork>.jsonl --labels upstream,superfast
+```
+
+Commit the text/sql/jsonl results (they are small). Never commit models or raw `.ncu-rep`.
 Note the instance type, GPU variant (PCIe/SXM2, 16/32 GB) and price in `bench/BASELINE.md`.
