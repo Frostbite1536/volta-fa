@@ -27,9 +27,13 @@ git clone volta-fa.bundle volta-fa && cd volta-fa
 
 ## 3. Set up (~15–25 min, mostly the CUDA download)
 
+Start `tmux` first (install it with apt if the image lacks it), so a dropped SSH session does not
+leave dpkg half-configured or kill a build:
+
 ```bash
-bench/cloud/setup.sh
-export PATH=/usr/local/cuda-12.8/bin:$PATH
+tmux new -s vfa
+bench/cloud/setup.sh                       # full log in bench/results/setup-*.log
+export PATH=/usr/local/cuda-12.8/bin:$PATH # setup also adds this to ~/.bashrc for new panes
 ```
 
 It installs CUDA 12.8 (not the driver), ninja, ccache and NCCL, checks out llama.cpp at
@@ -41,12 +45,12 @@ volta-fa CPU tests.
 | # | Command | Needs | Time (rough) | Answers |
 | --- | --- | --- | --- | --- |
 | 1 | `STEPS="env build support test perf" bench/phase0.sh` | nothing | build 15–30 min, runs ~10 min | which FA cases Volta supports/fails; kernel timings incl. D=256 decode and quantised KV |
-| 2 | `LLAMA=third_party/llama-superfast-v100 EXTRA_CMAKE="-DGGML_CUDA_CUB_3DOT2=ON -DGGML_NATIVE=OFF" STEPS="env build support test perf" bench/phase0.sh` | nothing | one more build | the same kernel-level numbers for the superfast fork (pinned in `bench/SUPERFAST_COMMIT`): does it beat upstream, and on which shapes? Add the gcc-14 flags setup printed if the default compiler fails |
-| 3 | `bench/pr27997/run.sh` | nothing | 4 builds (ccache makes 2–4 fast) | `pr` vs upstream vs `comb64`/`pr_comb64`: regs/stack, correctness, D=256 prefill kernel time |
-| 4 | `MODEL=… bench/pr27997/run.sh` | a D=256 GGUF | +llama-bench per variant | end-to-end prefill at 4k/16k/64k depth |
-| 5 | `bench/phase0.sh` with `bench/models.txt`, for upstream and (with `LLAMA=…`) the fork | 2–4 GGUFs | ~30–60 min each | depth / KV-quant / small-batch / ubatch sweeps; small-batch at depth is where the fork re-routes decode to tensor cores |
-| 6 | `cmake -S . -B build -G Ninja && cmake --build build && build/bench/p2p_bandwidth --csv` (volta-fa itself, CUDA 12.8) | 1+ GPU | minutes | staged-copy bandwidth; on a multi-GPU instance also the peer path (NVLink there, so not the home box's PCIe numbers) |
-| 7 | `bin/profile-ncu.sh …` | Volta-capable ncu + profiling permission | as needed | only if step 3 of setup said ncu works |
+| 2 | `LLAMA=third_party/llama-superfast-v100 EXTRA_CMAKE="-DGGML_CUDA_CUB_3DOT2=ON -DGGML_NATIVE=OFF" STEPS="env build support test perf" bench/phase0.sh` | nothing | one more build | the same kernel-level numbers for the superfast fork (pinned in `bench/SUPERFAST_COMMIT`): does it beat upstream, and on which shapes? If the default compiler fails, `rm -rf third_party/llama-superfast-v100/build-sm70` and retry with the gcc-14 flags setup printed. The fork's test-backend-ops options are unverified; if `support`/`perf` fail there, its llama-bench rows (5) still compare |
+| 3 | `bench/pr27997/run.sh` | nothing | 5 builds (ccache, shared across variants via `CCACHE_BASEDIR`, makes 2–5 faster), then 3 interleaved timing rounds | variants vs upstream: regs/stack, correctness, D=256 prefill kernel time; `summary.md` has the median table |
+| 4 | `MODEL=… bench/pr27997/run.sh` | a D=256 GGUF | +llama-bench per variant per round | end-to-end prefill at 4k/16k/64k depth |
+| 5 | `STEPS="env bench" bench/phase0.sh` with `bench/models.txt`, for upstream and (with `LLAMA=…`) the fork | 2–4 GGUFs | ~30–60 min each | depth / KV-quant / small-batch / ubatch sweeps; small-batch at depth is where the fork re-routes decode to tensor cores. (`STEPS` avoids re-running the kernel steps and, on multi-GPU NVLink instances, the `multi` step) |
+| 6 | `PATH=$PWD/.venv/bin:$PATH cmake -S . -B build -G Ninja && cmake --build build && build/bench/p2p_bandwidth --csv` (volta-fa itself; the venv cmake because Ubuntu 22.04's is 3.22) | 1+ GPU | minutes | staged-copy bandwidth; on a multi-GPU instance also the peer path (NVLink there, so not the home box's PCIe numbers) |
+| 7 | `bin/profile-ncu.sh …` | Volta-capable ncu + profiling permission | as needed | only if setup said ncu lists GV100; in containers ncu usually also needs `CAP_SYS_ADMIN`, which root alone does not give |
 
 Use `tmux` so a dropped SSH session does not kill a run.
 
@@ -63,8 +67,9 @@ Tables for the write-up:
 
 ```bash
 R=bench/results/pr27997-<stamp>
-python3 bench/analyze.py tbo $R/upstream.perf.sql $R/pr.perf.sql $R/comb64.perf.sql $R/pr_comb64.perf.sql
-python3 bench/analyze.py tbo bench/results/phase0-llama.cpp-*/fa-perf.sql bench/results/phase0-llama-superfast-v100-*/fa-perf.sql --labels upstream,superfast
+cat $R/summary.md        # written by run.sh: median of the interleaved rounds per variant
+U=bench/results/phase0-llama.cpp-<stamp>; F=bench/results/phase0-llama-superfast-v100-<stamp>   # one dir each, not a glob
+python3 bench/analyze.py tbo $U/fa-perf.sql $F/fa-perf.sql --labels upstream,superfast
 python3 bench/analyze.py lb <upstream>.jsonl <fork>.jsonl --labels upstream,superfast
 ```
 

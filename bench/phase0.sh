@@ -15,7 +15,7 @@ REPS=${REPS:-3}
 TAG=${TAG:-$(basename "$LLAMA")}
 EXTRA_CMAKE=${EXTRA_CMAKE:-}
 read -ra EXTRA <<< "$EXTRA_CMAKE"
-OUT=bench/results/phase0-$TAG-$(date +%Y%m%d-%H%M)-$(hostname -s)
+OUT=bench/results/phase0-$TAG-$(date +%Y%m%d-%H%M%S)-$(hostname -s 2>/dev/null || hostname)
 mkdir -p "$OUT"
 log() { echo "[$(date +%T)] $*" | tee -a "$OUT/run.log"; }
 has() { [[ " $STEPS " == *" $1 "* ]]; }
@@ -29,19 +29,22 @@ ngpu=$(nvidia-smi -L | grep -c V100 || true)
 
 if has env; then
   log "env"
-  { echo "date: $(date -Is)"; echo "host: $(hostname)"; echo "volta-fa: $(git rev-parse --short HEAD)"
+  # Subshell with set +e: a missing tool in a container (topo, ncu) must not abort the whole run.
+  ( set +e; echo "date: $(date -Is)"; echo "host: $(hostname)"; echo "volta-fa: $(git rev-parse --short HEAD)"
     echo "llama.cpp tree: $LLAMA ($TAG) $(git -C "$LLAMA" rev-parse HEAD)"; echo "extra cmake: $EXTRA_CMAKE"; nvcc --version | tail -2; uname -r
     nvidia-smi --query-gpu=index,name,driver_version,pcie.link.gen.max,pcie.link.width.max,clocks.max.sm,clocks.max.mem,power.limit,memory.total --format=csv
     echo; nvidia-smi topo -m; echo; nvidia-smi topo -p2p r 2>/dev/null || true
     command -v ncu >/dev/null && ncu --version | tail -1; command -v nsys >/dev/null && nsys --version
-  } > "$OUT/env.txt" 2>&1
+  ) > "$OUT/env.txt" 2>&1 || true   # the subshell's status is its last command's (e.g. no nsys)
 fi
 
 if has build; then
   log "build llama.cpp for sm_70"
-  cmake -S "$LLAMA" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON \
-    -DCMAKE_CUDA_ARCHITECTURES=70 -DLLAMA_CURL=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "${EXTRA[@]}" > "$OUT/build.log" 2>&1
-  cmake --build "$BUILD" --target llama-bench test-backend-ops llama-cli >> "$OUT/build.log" 2>&1
+  if ! { cmake -S "$LLAMA" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES=70 -DLLAMA_CURL=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "${EXTRA[@]}" > "$OUT/build.log" 2>&1 &&
+         cmake --build "$BUILD" --target llama-bench test-backend-ops llama-cli >> "$OUT/build.log" 2>&1; }; then
+    log "BUILD FAILED (last lines below; full log $OUT/build.log)"; tail -20 "$OUT/build.log" | tee -a "$OUT/run.log"; exit 1
+  fi
   # GGML_CUDA_NCCL defaults ON but silently builds without NCCL if it is not installed.
   if grep -q "GGML_USE_NCCL" "$BUILD/compile_commands.json" 2>/dev/null; then log "  NCCL: linked"
   else log "  NCCL: NOT linked (install libnccl2 + libnccl-dev for CUDA 12; -sm tensor nccl runs fall back)"; fi
@@ -53,7 +56,7 @@ has support && { log "FA support matrix"; "$TBO" support -o FLASH_ATTN_EXT -b CU
 # Correctness vs CPU (a Volta-path bug is itself a finding).
 has test && { log "FA correctness"; "$TBO" test -o FLASH_ATTN_EXT -b CUDA0 > "$OUT/fa-test.txt" 2>&1 || true; { grep -E "FAIL|passed" "$OUT/fa-test.txt" || echo "  (no pass/fail summary found)"; } | tail -3 | tee -a "$OUT/run.log"; }
 # Kernel-level timing of every FA test case.
-has perf && { log "FA kernel perf"; "$TBO" perf -o FLASH_ATTN_EXT -b CUDA0 --output sql > "$OUT/fa-perf.sql" 2> "$OUT/fa-perf.err" || true; }
+has perf && { log "FA kernel perf"; stdbuf -oL "$TBO" perf -o FLASH_ATTN_EXT -b CUDA0 --output sql > "$OUT/fa-perf.sql" 2> "$OUT/fa-perf.err" || true; }
 
 if has bench; then
   [ -f bench/models.txt ] || { log "no bench/models.txt; skipping llama-bench"; exit 0; }
@@ -77,16 +80,19 @@ if has bench; then
 fi
 
 if has multi && [ "$ngpu" -ge 2 ] && [ -f bench/models.txt ]; then
-  m=$(grep -v '^#' bench/models.txt | head -1); n=$(basename "$m" .gguf)
+  mm=$(grep -v -e '^#' -e '^[[:space:]]*$' bench/models.txt | head -1 || true)
+fi
+if has multi && [ -n "${mm:-}" ]; then
+  n=$(basename "$mm" .gguf)
   log "dual-GPU split modes on $n"
   # -sm row no longer exists for CUDA (llama.cpp #24216). Tensor split all-reduce is NCCL or an
   # internal host-staged fallback; GGML_CUDA_P2P only enables peer access for plain copies.
-  env -u GGML_CUDA_P2P -u GGML_CUDA_ALLREDUCE "$LB" -m "$m" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm layer -p 512,4096 -n 128 -d 0,16384 \
+  env -u GGML_CUDA_P2P -u GGML_CUDA_ALLREDUCE "$LB" -m "$mm" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm layer -p 512,4096 -n 128 -d 0,16384 \
     -r "$REPS" -o jsonl > "$OUT/lb-$n-multi-layer.jsonl" 2> "$OUT/lb-$n-multi-layer.err" || log "  layer split failed"
   # GGML_CUDA_P2P is presence-checked (getenv != nullptr): "=0" would ENABLE it, so unset for off.
   for ar in nccl internal; do for p2p in 0 1; do
     p2penv=(-u GGML_CUDA_P2P); [ "$p2p" = 1 ] && p2penv=(GGML_CUDA_P2P=1)
-    env "${p2penv[@]}" GGML_CUDA_ALLREDUCE=$ar "$LB" -m "$m" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm tensor \
+    env "${p2penv[@]}" GGML_CUDA_ALLREDUCE=$ar "$LB" -m "$mm" -dev CUDA0/CUDA1 -ngl 99 -fa on -sm tensor \
       -p 512,4096 -n 128 -d 0,16384 -r "$REPS" -o jsonl > "$OUT/lb-$n-multi-tensor-$ar-p2p$p2p.jsonl" \
       2> "$OUT/lb-$n-multi-tensor-$ar-p2p$p2p.err" || log "  tensor split ($ar, p2p=$p2p) failed"
   done; done

@@ -52,3 +52,7 @@ third_party/*
 tools/
 bench/models.txt
 third_party/pr27997-work/
+
+# Python bytecode
+__pycache__/
+*.pyc
