@@ -52,7 +52,7 @@ log "profiler capabilities"
 if command -v ncu > /dev/null; then
     ncu --version | tail -1
     if ncu --list-chips 2>/dev/null | tr ',' '\n' | grep -qi gv100; then log "  ncu supports GV100"
-    else log "  this ncu does NOT list GV100: kernel metrics need an older Nsight Compute; skip bin/profile-ncu.sh"; fi
+    else log "  this ncu does NOT list GV100 (Volta was removed in Nsight Compute 2025.3): use the 2025.1.x from CUDA 12.8; skip bin/profile-ncu.sh until then"; fi
 fi
 if [ -r /proc/driver/nvidia/params ] && grep -q "RmProfilingAdminOnly: 1" /proc/driver/nvidia/params; then
     log "  profiling restricted to admin (RmProfilingAdminOnly=1): run ncu as root or skip it"
