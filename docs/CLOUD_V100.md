@@ -45,7 +45,8 @@ volta-fa CPU tests.
 | 3 | `bench/pr27997/run.sh` | nothing | 4 builds (ccache makes 2–4 fast) | `pr` vs upstream vs `comb64`/`pr_comb64`: regs/stack, correctness, D=256 prefill kernel time |
 | 4 | `MODEL=… bench/pr27997/run.sh` | a D=256 GGUF | +llama-bench per variant | end-to-end prefill at 4k/16k/64k depth |
 | 5 | `bench/phase0.sh` with `bench/models.txt`, for upstream and (with `LLAMA=…`) the fork | 2–4 GGUFs | ~30–60 min each | depth / KV-quant / small-batch / ubatch sweeps; small-batch at depth is where the fork re-routes decode to tensor cores |
-| 6 | `bin/profile-ncu.sh …` | Volta-capable ncu + profiling permission | as needed | only if step 3 of setup said ncu works |
+| 6 | `cmake -S . -B build -G Ninja && cmake --build build && build/bench/p2p_bandwidth --csv` (volta-fa itself, CUDA 12.8) | 1+ GPU | minutes | staged-copy bandwidth; on a multi-GPU instance also the peer path (NVLink there, so not the home box's PCIe numbers) |
+| 7 | `bin/profile-ncu.sh …` | Volta-capable ncu + profiling permission | as needed | only if step 3 of setup said ncu works |
 
 Use `tmux` so a dropped SSH session does not kill a run.
 

@@ -29,9 +29,10 @@ What works here:
 - First, once per shell: `export PATH=$PWD/.venv/bin:$PATH` (puts `cmake`, `ninja`, `ctest`, `python`, `shellcheck` from the venv first).
 - **CPU build + tests** (reference attention, tiled numerics model): `cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build`. CMake finds no CUDA compiler and builds the CPU targets only.
 - **Static sm_70 kernel reports**: `python bin/sm70-report.py <file.cu>` gives exact registers, spills, stack and static smem per kernel via NVRTC + ptxas. The pip `nvidia-cuda-nvcc-cu12` wheel ships `ptxas` but **not** the `nvcc` driver, which is why NVRTC is used.
+- **Host-only CUDA code (P2P)** builds against the pip `libcudart` (auto-detected in `.venv`) and runs on the laptop GPU: `ctest` runs the staged-path tests for real; the peer test skips with one GPU.
 - Lint: `shellcheck -x bin/*.sh`, `bin/check-forbidden.sh`.
 
-What does not work here: running anything on sm_70 (the local GPU is a Maxwell Quadro M2200), timing, ncu/nsys metrics, P2P.
+What does not work here: running anything on sm_70 (the local GPU is a Maxwell Quadro M2200), timing, ncu/nsys metrics, the peer (2-GPU) P2P path.
 
 ## V100 box (when built)
 

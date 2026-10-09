@@ -19,7 +19,7 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 - P-4 Planning calculator: smem bytes, register estimate and theoretical occupancy for V100 for a candidate tile config (`bin/plan-tiles.py`). ✅
 - P-5 Phase 0 measurement kit: `bench/phase0.sh` runs FA support/correctness/perf via test-backend-ops plus the llama-bench grid (depth, KV quant, ubatch, dual-GPU split modes) into `bench/results/`. Drafted, not yet run (needs the box).
 - P-6 Kernel design docs for the top gap(s) from P-3, with static sm70 reports for draft kernels (regs/spill only, no timing). First candidates: (a) a tensor-core small-batch/GQA decode kernel (gap 1, and gap 2 if it dequantises K/V tiles in-kernel instead of converting the whole cache), (b) a Volta-specific D=256 prefill config (gap 3; may be an upstream config contribution rather than a new kernel).
-- P-7 P2P code that needs no hardware: topology probe, capability check with staged fallback, bandwidth test driver.
+- P-7 P2P code that needs no hardware: topology probe, capability check with staged fallback, bandwidth test driver. ✅ `include/volta_fa/p2p.h`, `bench/p2p_bandwidth`; staged path verified on a real (Maxwell) GPU, peer path not run until 2 GPUs. Known limit: large staged copies block the host on staging-buffer reuse.
 **Excludes**: any performance claim; tuning by guesswork.
 **Cloud V100 (planned 2026-10-09/10)**: runbook in `docs/CLOUD_V100.md`; runs P-5 and the PR #27997 A/B (`bench/pr27997/`) early. Cloud multi-V100 instances usually have NVLink, so they say nothing about PCIe P2P.
 

@@ -21,3 +21,12 @@ if(TARGET volta_fa_p2p)
     set_tests_properties(p2p_${case} PROPERTIES SKIP_RETURN_CODE 77)
   endforeach()
 endif()
+
+# bench/analyze.py must parse real test-backend-ops SQL output (fixture: CPU run at bench/LLAMA_COMMIT).
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME analyze_tbo
+    COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/bench/analyze.py tbo
+            ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/tbo-perf-cpu.sql ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/tbo-perf-cpu.sql)
+  set_tests_properties(analyze_tbo PROPERTIES PASS_REGULAR_EXPRESSION "type_K=q8_0 \\| [0-9.]+ ms \\| [0-9.]+ ms \\| 1\\.00×")
+endif()
