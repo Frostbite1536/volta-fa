@@ -50,3 +50,4 @@ third_party/*
 # Local toolchain (docs/TOOLCHAIN.md)
 .venv/
 tools/
+bench/models.txt

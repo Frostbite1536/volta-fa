@@ -11,8 +11,8 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 - P-1 Toolchain without a GPU: NVRTC + ptxas static reports for sm_70 (`bin/sm70-report.py`). ✅
 - P-2 Reference + tests: CPU attention reference with the full shape/edge-case matrix, and a CPU *tiled online-softmax model* that copies the kernel's numerics (FP16 P, FP32 m/l, tile order). It gives an empirical error budget before any GPU code exists, so tolerances come from data rather than guesses.
 - P-3 Desk research: how llama.cpp picks the FA kernel on cc 7.0, its tile configs, history, multi-GPU modes; a ranked list of gaps to measure.
-- P-4 Planning calculator: smem bytes, register estimate and theoretical occupancy for V100 for a candidate tile config.
-- P-5 Phase 0 measurement kit: scripts that run the llama-bench / test-backend-ops grid and write `bench/results/` + `bench/BASELINE.md` the moment the box is up.
+- P-4 Planning calculator: smem bytes, register estimate and theoretical occupancy for V100 for a candidate tile config (`bin/plan-tiles.py`). ✅
+- P-5 Phase 0 measurement kit: `bench/phase0.sh` runs FA support/correctness/perf via test-backend-ops plus the llama-bench grid (depth, KV quant, ubatch, dual-GPU split modes) into `bench/results/`. Drafted, not yet run (needs the box).
 - P-6 Kernel design docs for the top gap(s) from P-3, with static sm70 reports for draft kernels (regs/spill only, no timing).
 - P-7 P2P code that needs no hardware: topology probe, capability check with staged fallback, bandwidth test driver.
 **Excludes**: any performance claim; tuning by guesswork.

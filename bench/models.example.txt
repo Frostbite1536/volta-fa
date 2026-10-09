@@ -1,0 +1,6 @@
+# One GGUF path per line; copy to bench/models.txt (gitignored: local paths).
+# Pick models that differ in head dim and GQA ratio, since those drive FA kernel selection:
+# /models/Llama-3.1-8B-Instruct-Q8_0.gguf        d=128, GQA 4
+# /models/Qwen3-14B-Q6_K.gguf                    d=128, GQA 5
+# /models/gemma-2-9b-it-Q8_0.gguf                d=256, softcap
+# /models/Phi-3.5-mini-instruct-Q8_0.gguf        d=96,  no GQA

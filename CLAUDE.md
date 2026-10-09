@@ -22,11 +22,13 @@ Fused FP16 attention + PCIe P2P kernels for NVIDIA Volta (sm_70). CUDA C++17, CM
 export PATH=$PWD/.venv/bin:$PATH   # once per shell
 cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --output-on-failure
 python bin/sm70-report.py src/attention/<file>.cu   # static regs/spill/smem for sm_70
+python bin/plan-tiles.py --d 128 --br 64 --bc 64 --warps 4 [--regs N]   # smem/occupancy/roofline for a tile config
 bin/check-forbidden.sh && shellcheck -x bin/*.sh
 
 # V100 box
 cmake -S . -B build -G Ninja -DCMAKE_CUDA_ARCHITECTURES=70 && cmake --build build && ctest --test-dir build --output-on-failure
 bin/profile-ncu.sh <binary> [args...]                        # text summary into profiles/
+bench/phase0.sh                                              # Phase 0 baseline kit (llama.cpp FA support/test/perf + llama-bench grid)
 ```
 
 ## Conventions
