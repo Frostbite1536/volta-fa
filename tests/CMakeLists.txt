@@ -10,3 +10,14 @@ foreach(case matrix masked rounding validation)
   add_test(NAME tiled_${case} COMMAND test_tiled_model ${case})
 endforeach()
 add_test(NAME error_budget COMMAND error_budget)
+
+
+# Needs the CUDA runtime (top-level block); skipped on CPU-only builds.
+if(TARGET volta_fa_p2p)
+  add_executable(test_p2p test_p2p.cpp)
+  target_link_libraries(test_p2p PRIVATE volta_fa_p2p)
+  foreach(case probe env staged_sizes stream_order_before buffer_reuse peer)
+    add_test(NAME p2p_${case} COMMAND test_p2p ${case})
+    set_tests_properties(p2p_${case} PROPERTIES SKIP_RETURN_CODE 77)
+  endforeach()
+endif()
