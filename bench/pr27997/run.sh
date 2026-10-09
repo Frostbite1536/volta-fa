@@ -15,7 +15,7 @@ cd "$(dirname "$0")/../.." || exit 2
 ROOT=$PWD
 LLAMA_SRC=${LLAMA_SRC:-$ROOT/third_party/llama.cpp}
 WORK=${WORK:-$ROOT/third_party/pr27997-work}
-VARIANTS=${VARIANTS:-"upstream pr comb64 pr_comb64"}
+VARIANTS=${VARIANTS:-"upstream pr comb64 pr_comb64 pr_k64_c64"}
 ROUNDS=${ROUNDS:-3}
 REPS=${REPS:-5}
 OUT=$ROOT/bench/results/pr27997-$(date +%Y%m%d-%H%M%S)-$(hostname -s 2>/dev/null || hostname)
@@ -40,6 +40,7 @@ row() {
         pr)        echo "    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 64, 128, 2,  32, 128,  64, 128, 2, false);" ;;
         comb64)    echo "    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 64, 128, 2,  32, 128, 128,  64, 2, true);" ;;
         pr_comb64) echo "    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 64, 128, 2,  32, 128,  64,  64, 2, false);" ;;
+        pr_k64_c64) echo "    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 64, 128, 2,  32,  64,  64,  64, 2, false);" ;;
         *) echo "unknown variant $1" >&2; exit 2 ;;
     esac
 }

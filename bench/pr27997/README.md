@@ -22,15 +22,37 @@ Volta-only row for `DKQ=DV=256, ncols=64` instead of falling back to the Ampere 
   | --- | --- | --- | --- | --- | --- |
   | upstream (Q in regs) | 33.0 KB | 16.5 KB | 66.0 KB | **66.0 KB** | 1 |
   | `pr` (Q in smem) | 33.0 KB | 16.5 KB | 66.0 KB | **66.0 KB** | 1 |
-  | `pr_comb64` | 33.0 KB | 16.5 KB | 34.0 KB | **50.8–54.5 KB** | 1 |
+  | `pr_comb64` | 33.0 KB | 16.5 KB | 34.0 KB | **50.1–54.5 KB** | 1 |
   | `comb64` (Q in regs) | 33.0 KB | 16.5 KB | 34.0 KB | **34.0 KB** | **2** |
 
   The 66 KB `nbatch_combine` buffer pins every variant with `combine=128` to 1 block/SM, so the
   row's `occupancy=2` is never reached. The PR's speedup must come from the register side: the
   PR reports stack 552 → 56 B at 255 registers, i.e. spills removed by not keeping Q in registers.
-- **Untested alternative:** `comb64` is the upstream row with only `nbatch_combine` halved. It is
-  the only variant that fits 2 blocks/SM, but it keeps Q in registers (the spilling layout). Which
-  of "fewer spills" (`pr`) and "2× occupancy" (`comb64`) wins is a hardware question.
+- **Untested alternatives:** `comb64` is the upstream row with only `nbatch_combine` halved: it fits
+  2 blocks/SM but keeps Q in registers (the spilling layout). `pr_k64_c64` is the PR row with
+  `nbatch_K2` and `nbatch_combine` also halved: the K tile shrinks enough that Q-in-smem + K/V + mask
+  is 42.1–46.5 KB, so it is the only variant with **both** low spills and 2 blocks/SM, at the cost of
+  more K-load iterations per tile. Which wins is a hardware question; the harness times all of them.
+
+## Static results (real compile, no GPU)
+
+nvcc 12.8.93 (conda-forge, `WITH_NVCC=1 bin/setup-dev.sh`), `sm_70`, llama.cpp 79e2e74, upstream's
+own flags (`-O3 -use_fast_math -extended-lambda`), the four `ncols=64` instance files
+(`fattn-mma-f16-instance-ncols1_{64,32,16,8}-ncols2_{1,2,4,8}.cu`); `cuobjdump -res-usage` on the nine
+D=256 kernels they contain. Shared memory is the launch-time formula (`fattn-mma-f16.cuh:2033-2043`),
+range over ncols1.
+
+| variant | registers | stack (spill) | smem / block | blocks/SM (smem, regs) |
+| --- | --- | --- | --- | --- |
+| upstream | 255 | 464–640 B | 66.0 KB | 1 |
+| `pr` (#27997) | 253–255 | 48–112 B | 66.0 KB | 1 |
+| `comb64` | 255 | 464–640 B | 34.0 KB | 2 |
+| `pr_comb64` | 254–255 | 48–112 B | 50.1–54.5 KB | 1 |
+| `pr_k64_c64` | 252–255 | 48–160 B | 42.1–46.5 KB | 2 |
+
+This confirms the PR's register claim on every D=256 ncols=64 instance (it reported one kernel:
+552 → 56 B). Two blocks/SM at 255 registers × 128 threads uses exactly the 64K-register file.
+
 - **Nits:** the PR's row is not column-aligned like its neighbours (CONTRIBUTING asks for vertical
   alignment); only `ncols=64` gets a Volta row, so `ncols=8/16/32` still use Ampere rows.
 
@@ -38,7 +60,7 @@ Volta-only row for `DKQ=DV=256, ncols=64` instead of falling back to the Ampere 
 
 ```bash
 sudo apt-get install -y ccache    # llama.cpp picks it up; variants 2-4 then rebuild only the FA files
-bench/pr27997/run.sh                                         # kernel-level A/B, ~4 builds
+bench/pr27997/run.sh                                         # kernel-level A/B: 5 builds, 3 interleaved timing rounds
 MODEL=/models/<d256-model>.gguf bench/pr27997/run.sh         # + llama-bench pp1024 at depth 4k/16k/64k
 ```
 
