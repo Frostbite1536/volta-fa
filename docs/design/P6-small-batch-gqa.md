@@ -1,7 +1,8 @@
 # P-6 design: small-batch attention for non-power-of-two GQA on Volta
 
 Status: **implemented as a 3-patch series (`third_party/patches/0001..0003`), statically verified, needs a
-V100 session to measure (`bench/p6/run.sh`).** Owner decision points are marked **Decision**.
+V100 session to measure (`bench/patches/run.sh`, which also covers P-8's `0004..0006`).** Owner decision
+points are marked **Decision**.
 
 ## Problem (measured)
 
@@ -116,6 +117,12 @@ unchanged; GQA optimisation off → TILE for ≤ 16 tokens (was: illegal 16-colu
 
 Without 0003, D=256 small-batch MMA instances spill 432–472 B (Ampere fallback rows), so 0002's gain on
 Qwen-like models is expected to be smaller than with 0003. The harness measures upstream / fix / p6 / p6cfg.
+
+**Upstream since the base (checked 2026-10-10, master `aa94f20`):** the series applies cleanly. The only
+FA change is #30103, a missing `__syncthreads()` in the MMA combine step when `nbatch_combine != DKQ/2`
+and `np == 1`. That would matter for the 0003 rows and `pr_k64_c64` (combine 64 at D=256), but on Volta
+a warp covers 32 Q columns (`T_B_KQ = tile<32,4>`), so `np = 4·32/ncols` is 4 at ncols 32 and 2 at
+ncols 64. The sync was already taken for every 128-thread Volta config, so the fix changes nothing there.
 
 ## Upstreaming
 

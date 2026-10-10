@@ -1,0 +1,77 @@
+From 5fa315579fe1933a1bdddeefdee437f781346401 Mon Sep 17 00:00:00 2001
+From: Frostbite1536 <125112776+Frostbite1536@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 11:33:48 -0500
+Subject: [PATCH 5/6] CUDA: fewer idle threads when converting short
+ non-contiguous rows
+
+dequantize_block_cuda (2 values per thread) and convert_unary_cuda (1 per thread) used
+256 threads along a row and one block per row. A K/V cache view has one 64-256 value
+row per token and head, so most threads were idle and the launch was bound by the
+block count (Volta FA decode with a quantized or BF16 cache spent more time converting
+K/V to F16 than in attention). Use only as many threads per row as needed and several
+rows per block; rows of >= 512 (dequantize) or >= 256 (convert) values, and the
+contiguous paths, launch exactly as before.
+---
+ ggml/src/ggml-cuda/convert.cu | 25 +++++++++++++++++++------
+ 1 file changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/ggml/src/ggml-cuda/convert.cu b/ggml/src/ggml-cuda/convert.cu
+index 77fd28894..09a94da27 100644
+--- a/ggml/src/ggml-cuda/convert.cu
++++ b/ggml/src/ggml-cuda/convert.cu
+@@ -16,7 +16,7 @@ static __global__ void dequantize_block(const void * __restrict__ vx, dst_t * __
+         return;
+     }
+ 
+-    for (int64_t i01 = blockIdx.y; i01 < ne01; i01 += gridDim.y) {
++    for (int64_t i01 = int64_t(blockIdx.y)*blockDim.y + threadIdx.y; i01 < ne01; i01 += int64_t(gridDim.y)*blockDim.y) {
+         for (int64_t i0203 = blockIdx.z; i0203 < ne0203; i0203 += gridDim.z) {
+             const uint2 dm = fast_div_modulo((uint32_t)i0203, ne02);
+             const int64_t i02 = dm.y;
+@@ -254,8 +254,15 @@ static void dequantize_block_cuda(const void * vx, dst_t * y,
+         const int64_t s01, const int64_t s02, const int64_t s03, cudaStream_t stream) {
+     const int64_t ne0203 = ne02*ne03;
+     const uint3 ne02_fdv = init_fastdiv_values(ne02);
+-    const dim3 num_blocks((ne00 + 2*CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / (2*CUDA_DEQUANTIZE_BLOCK_SIZE), (int)std::min(ne01, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
+-    dequantize_block<qk, qr, dequantize_kernel><<<num_blocks, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>
++    // Short rows (e.g. a K/V cache view, one row per token and head) would leave most threads of a block idle
++    // and launch one block per row: use only as many threads per row as needed and put several rows in a block.
++    int nth_x = WARP_SIZE;
++    while (nth_x < CUDA_DEQUANTIZE_BLOCK_SIZE && 2*nth_x < ne00) {
++        nth_x *= 2;
++    }
++    const int nth_y = CUDA_DEQUANTIZE_BLOCK_SIZE / nth_x;
++    const dim3 num_blocks((ne00 + 2*nth_x - 1) / (2*nth_x), (int)std::min((ne01 + nth_y - 1) / nth_y, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
++    dequantize_block<qk, qr, dequantize_kernel><<<num_blocks, dim3(nth_x, nth_y, 1), 0, stream>>>
+         (vx, y, ne00, ne01, ne0203, ne02_fdv, s01, s02, s03);
+ }
+ 
+@@ -432,7 +439,7 @@ static __global__ void convert_unary(
+ 
+     const src_t * x = (const src_t *) vx;
+ 
+-    for (int64_t i01 = blockIdx.y; i01 < ne01; i01 += gridDim.y) {
++    for (int64_t i01 = int64_t(blockIdx.y)*blockDim.y + threadIdx.y; i01 < ne01; i01 += int64_t(gridDim.y)*blockDim.y) {
+         for (int64_t i0203 = blockIdx.z; i0203 < ne0203; i0203 += gridDim.z) {
+             const uint2 dm = fast_div_modulo((uint32_t)i0203, ne02);
+             const int64_t i02 = dm.y;
+@@ -474,8 +481,14 @@ static void convert_unary_cuda(const void * vx, dst_t * y,
+         const int64_t s01, const int64_t s02, const int64_t s03, cudaStream_t stream) {
+     const int64_t ne0203 = ne02*ne03;
+     const uint3 ne02_fdv = init_fastdiv_values(ne02);
+-    const dim3 num_blocks((ne00 + CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / CUDA_DEQUANTIZE_BLOCK_SIZE, (int)std::min(ne01, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
+-    convert_unary<src_t><<<num_blocks, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>
++    // Several short rows per block, as in dequantize_block_cuda.
++    int nth_x = WARP_SIZE;
++    while (nth_x < CUDA_DEQUANTIZE_BLOCK_SIZE && nth_x < ne00) {
++        nth_x *= 2;
++    }
++    const int nth_y = CUDA_DEQUANTIZE_BLOCK_SIZE / nth_x;
++    const dim3 num_blocks((ne00 + nth_x - 1) / nth_x, (int)std::min((ne01 + nth_y - 1) / nth_y, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
++    convert_unary<src_t><<<num_blocks, dim3(nth_x, nth_y, 1), 0, stream>>>
+         (vx, y, ne00, ne01, ne0203, ne02_fdv, s01, s02, s03);
+ }
+ 
+-- 
+2.43.0
+

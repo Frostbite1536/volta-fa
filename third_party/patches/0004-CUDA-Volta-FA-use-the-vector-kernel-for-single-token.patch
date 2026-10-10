@@ -1,0 +1,65 @@
+From bf24f828eab76ad117254a6aff11a7baee6579f2 Mon Sep 17 00:00:00 2001
+From: Frostbite1536 <125112776+Frostbite1536@users.noreply.github.com>
+Date: Sat, 10 Oct 2026 11:32:39 -0500
+Subject: [PATCH 4/6] CUDA: Volta FA, use the vector kernel for single-token
+ decode with quantized or BF16 K/V
+
+The tile and MMA kernels convert the whole quantized/BF16 K/V view to F16 on every
+call; for one token that conversion costs more than the attention. Turing already
+sends batch-1 quantized decode to the vector kernel; Volta now does the same when
+the vector instance for the K/V types is compiled. Tests: D 128/256, q8_0/q4_0/bf16,
+GQA 4/6/8, 1-2 tokens, sinks, unpadded KV, permuted K/V, softcap.
+---
+ ggml/src/ggml-cuda/fattn.cu |  8 ++++++++
+ tests/test-backend-ops.cpp  | 16 ++++++++++++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index 48ed116e1..2611f9687 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -703,6 +703,14 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+         // the GQA optimization does not apply, and a larger value here would select MMA for a batch that the
+         // dispatch then has to run as a < 32 column instance, which Volta does not compile.
+         const int volta_ncols2 = ggml_cuda_fattn_mma_f16_volta_ncols2(Q->ne[0], gqa_ratio, gqa_opt_applies, Q->ne[1]);
++        // TILE and MMA convert a quantized or BF16 K/V to F16 on every call, which for a single token costs more
++        // than the attention itself. VEC reads these types directly (as on Turing), if its instance is compiled.
++        const bool kv_converted = (K->type != GGML_TYPE_F16 && K->type != GGML_TYPE_F32) ||
++                                  (V->type != GGML_TYPE_F16 && V->type != GGML_TYPE_F32);
++        if (can_use_vector_kernel && Q->ne[1] == 1 && kv_converted &&
++                ggml_cuda_get_fattn_vec_case(Q->ne[0], K->type, V->type) != nullptr) {
++            return BEST_FATTN_KERNEL_VEC;
++        }
+         if (can_use_vector_kernel && Q->ne[1] * volta_ncols2 <= 2) {
+             return BEST_FATTN_KERNEL_VEC;
+         }
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index bd4f398a6..fdbe414fd 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -11712,6 +11712,22 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+             test_cases.emplace_back(new test_flash_attn_ext(128, 128, 2, {gqa, 1}, 5003, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
+         }
+     }
++    // Quantized and BF16 K/V with GQA at 1-2 tokens: on Volta a single token uses the vector kernel on these types
++    // directly; 2 tokens and unpadded KV lengths still convert K/V to F16 for the tile kernel.
++    for (int hs : { 128, 256 }) {
++        for (ggml_type type_KV : { GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, GGML_TYPE_BF16 }) {
++            for (int gqa : { 4, 6, 8 }) {
++                for (int nb : { 1, 2 }) {
++                    for (bool sinks : { false, true }) {
++                        test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 4096, nb, true, sinks, 0, 0, GGML_PREC_F32, type_KV, type_KV));
++                    }
++                }
++                test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 5003, 1, true, false, 0, 0, GGML_PREC_F32, type_KV, type_KV));
++            }
++            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {4, 1}, 4096, 1, true, false, 0, 0, GGML_PREC_F32, type_KV, type_KV, {0, 2, 1, 3}));
++            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {4, 1}, 4096, 1, true, false, 0, 10.0f, GGML_PREC_F32, type_KV, type_KV));
++        }
++    }
+ 
+     // Sparse gather: native block sizes, padded slots, and head/batch strides.
+     for (ggml_type type : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_BF16, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, GGML_TYPE_IQ4_NL}) {
+-- 
+2.43.0
+

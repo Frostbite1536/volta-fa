@@ -9,8 +9,10 @@
       trees do not print (so upstream and a fork with an older base still line up). Speedup is
       relative to the first group.
   python bench/analyze.py lb upstream.jsonl fork.jsonl [--labels a,b]
-      llama-bench `-o jsonl` files. Rows are matched on the test configuration;
-      a change is marked "~" when it is within the two runs' combined stddev.
+  python bench/analyze.py lb up.r1.jsonl,up.r2.jsonl fix.r1.jsonl,fix.r2.jsonl
+      llama-bench `-o jsonl` files. Rows are matched on the test configuration. One file per build:
+      mean ± stddev, a change is marked "~" when it is within the combined stddev. A comma-joined
+      group (rounds): median of the round means with the min-max range, "~" when the ranges overlap.
 
 Only the Python standard library is used, so it runs on a fresh cloud instance.
 """
@@ -124,7 +126,7 @@ def cmd_tbo(files, labels):
         print(f"| {k[0]} | {short_params(k, keys)} | " + " | ".join(cells) + " | " + " | ".join(sp) + " |")
 
 
-def load_lb(path):
+def load_lb_one(path):
     rows = {}
     for n, line in enumerate(pathlib.Path(path).read_text().splitlines(), 1):
         line = line.strip()
@@ -139,6 +141,21 @@ def load_lb(path):
     if not rows:
         sys.exit(f"{path}: no llama-bench JSON lines")
     return rows
+
+
+def load_lb(group):
+    """key -> (value, lo, hi, n): one file gives mean -/+ stddev, a group gives median and min/max of rounds."""
+    rounds = [load_lb_one(p) for p in group.split(",")]
+    out = {}
+    for key in set().union(*rounds):
+        vals = [r[key] for r in rounds if key in r]
+        if len(rounds) == 1:
+            m, sd = vals[0]
+            out[key] = (m, m - sd, m + sd, 1)
+        else:
+            ms = sorted(v[0] for v in vals)
+            out[key] = (statistics.median(ms), ms[0], ms[-1], len(ms))
+    return out
 
 
 def lb_test_name(key):
@@ -160,10 +177,18 @@ def cmd_lb(files, labels):
     print("| model | test | " + " | ".join(f"{l} t/s" for l in labels) + " | " +
           " | ".join(f"{l} vs {labels[0]}" for l in labels[1:]) + " |")
     print("|---|---|" + "---:|" * (2 * len(labels) - 1))
+
+    def cell(r):
+        if not r:
+            return "absent"
+        if r[3] == 1:
+            return f"{r[0]:.2f} ± {(r[2] - r[1]) / 2:.2f}"
+        return f"{r[0]:.2f} ({r[1]:.2f}–{r[2]:.2f}, n={r[3]})"
+
     for k in keys:
         model, test = lb_test_name(k)
         base = data[0].get(k)
-        cells = [f"{r[0]:.2f} ± {r[1]:.2f}" if r else "absent" for r in (d.get(k) for d in data)]
+        cells = [cell(d.get(k)) for d in data]
         deltas = []
         for d in data[1:]:
             r = d.get(k)
@@ -171,7 +196,7 @@ def cmd_lb(files, labels):
                 deltas.append("–")
                 continue
             pct = (r[0] / base[0] - 1) * 100
-            noise = abs(r[0] - base[0]) <= (r[1] + base[1])
+            noise = r[1] <= base[2] and base[1] <= r[2]   # mean±sd intervals or round ranges overlap
             deltas.append(f"{pct:+.1f}%{' ~' if noise else ''}")
         print(f"| {model} | {test} | " + " | ".join(cells) + " | " + " | ".join(deltas) + " |")
 
