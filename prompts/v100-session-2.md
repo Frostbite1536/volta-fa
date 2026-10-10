@@ -20,7 +20,7 @@ Follow the checklist and rules in prompts/v100-session-2.md.
 
 1. **Rent** (owner does this on vast.ai; guide them):
    - Filter: 1× Tesla V100, **PCIE 32 GB** preferred (same part as the home box). SXM2 is ~10% faster and must
-     be labelled as such. ≥ 80 GB disk (7 llama.cpp builds + ccache + ~25 GB of models), Ubuntu 22.04/24.04,
+     be labelled as such. ≥ 60 GB disk (CUDA toolkit, 7 llama.cpp builds + ccache, ~26 GB of models), Ubuntu 22.04/24.04,
      driver R535–R580. Session 1 paid $0.163/hr.
    - Use the owner's saved custom template: image `vastai/base-image:cuda-12.8.1-cudnn-devel-ubuntu24.04-<date>`,
      on-start script **keeps `entrypoint.sh`** (it installs the SSH key; clearing it broke SSH in session 1).

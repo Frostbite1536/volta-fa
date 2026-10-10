@@ -123,7 +123,18 @@ f16, because q8_0/q4_0 is fewer bytes.
   - `0006` is 2.6–5.2× faster and matches a device-to-device copy of the output size
     (`bench/results/micro-dequant-m2200-20261010/`). Relative only; V100 numbers come from the same
     binary built for sm_70.
-- test-backend-ops on the M2200 with the full patch series (see "Local GPU correctness" below).
+- **Local GPU correctness** (patched `0001..0006`, sm_52 build, Quadro M2200). Maxwell routes quantised and BF16 FA at
+  more than 2 tokens (and unpadded KV) through TILE plus the K/V conversion, so it exercises `0005/0006` for real.
+  It cannot exercise the Volta-only selection in `0001/0002/0004`.
+  - `FLASH_ATTN_EXT`: **4200/4200 passed**, 0 FAIL (1339 cases not supported on Maxwell, e.g. iq4_nl). This
+    includes the 102 new P-8 cases and the 96 P-6 cases.
+  - `MUL_MAT` for every type whose conversion changed (f32/f16/bf16/q4_0/q4_1/q5_0/q5_1/q8_0): **1297/1297
+    passed**, 181 of them non-contiguous.
+  - compute-sanitizer memcheck, 0 errors: D=64 at 32 tokens with bf16/q8_0/q4_0/q4_1/q5_0 (all three changed
+    kernels), and the new D=128/256 unpadded-KV cases (18).
+  - The unfiltered `MUL_MAT` run aborted at `MUL_MAT(type_a=q4_K,…,n=9,k=1024,k_v=1280)`:
+    `GGML_ASSERT(convert_func != nullptr)` in the cuBLAS path, because there is no non-contiguous q4_K converter.
+    Untouched by these patches: upstream's table has no q4_K entry either (inferred from the code; a run on an unpatched sm_52 build is pending).
 
 ## Verification plan (V100, `bench/patches/run.sh`, variants `upstream … p6cfg qkv conv conv8`)
 
