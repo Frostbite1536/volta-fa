@@ -22,7 +22,12 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 - P-6 Kernel design docs for the top gap(s) from P-3, with static sm70 reports for draft kernels (regs/spill only, no timing). First candidates: (a) a tensor-core small-batch/GQA decode kernel (gap 1, and gap 2 if it dequantises K/V tiles in-kernel instead of converting the whole cache), (b) a Volta-specific D=256 prefill config (gap 3; may be an upstream config contribution rather than a new kernel).
 - P-7 P2P code that needs no hardware: topology probe, capability check with staged fallback, bandwidth test driver. ✅ `include/volta_fa/p2p.h`, `bench/p2p_bandwidth`; staged path verified on a real (Maxwell) GPU, peer path not run until 2 GPUs. Known limit: large staged copies block the host on staging-buffer reuse.
 **Excludes**: any performance claim; tuning by guesswork.
-**Cloud V100 (planned 2026-10-09/10)**: runbook in `docs/CLOUD_V100.md`; runs P-5 and the PR #27997 A/B (`bench/pr27997/`) early. Cloud multi-V100 instances usually have NVLink, so they say nothing about PCIe P2P.
+**Cloud V100 session (2026-10-10, V100-PCIE-32GB): done.** Results in `docs/research/phase0-cloud-2026-10-10.md`. Measured gaps that now drive P-6, ranked:
+  1. **Small-batch / speculative-verify attention at depth.** Upstream uses the non-tensor-core TILE path; the fork's Qwen-specific kernel shows +80–112% for pp8/pp16 on D=256 GQA 6 but regresses D=128 GQA 4 by 23–27%. A general Volta tensor-core small-batch kernel is the first kernel target.
+  2. **Quantised-KV decode.** Up to 7.2× slower than f16 at kernel level, −36 to −39% tg128 end to end on Llama-3.1-8B at 16K.
+  3. **D=256 prefill.** The one-row `pr_k64_c64` config gives 2.3–2.65× kernel / +45% end to end at 64K; that is an upstream contribution (via PR #27997), not a custom kernel.
+  4. **Volta small-batch crash** (16-column MMA instance without sm_70 code): one-line fix verified; an upstream bug report.
+  Not measured: multi-GPU/P2P (needs the home box), ncu metrics (container), perplexity.
 
 ## Phase 0: Baseline and gap analysis (first week on hardware)
 
