@@ -64,3 +64,4 @@ bench/results/**/*.build.log
 bench/results/**/build.log
 bench/results/**/fa-test*.txt
 bench/results/**/fa-support.txt
+bench/results/**/fixbuild.log
