@@ -83,10 +83,29 @@ so Volta falls through to the 32-column instance. Not found among upstream issue
 
 ### 4.1 Fix verification
 
-Pending.
+`bench/results/volta-ncols-fix-20261010-034659/` (patch, logs). With the one-line change the crash case
+passes, and the **full** `test-backend-ops test -o FLASH_ATTN_EXT` run completes: **3995 OK, 0 FAIL,
+exit 0** (unpatched: aborts after 3964). Not timed: the fix only changes which instance a
+previously-crashing configuration launches.
 
-## 5. Pending on this instance
+## 5. llama-superfast-v100 fork (`70df871`) vs upstream (kernel level, single run each)
 
-- Superfast fork (`70df871`) kernel-level Phase 0, same kit.
+`bench/results/phase0-llama-superfast-v100-20261010-031443-70a805e2950e/` (built with gcc-14,
+`-DGGML_CUDA_CUB_3DOT2=ON`). `python3 bench/analyze.py tbo <upstream>/fa-perf.sql <fork>/fa-perf.sql`:
+151 cases timed by both.
+
+- **D=256 prefill: fork 2.45–2.71× faster** than upstream (e.g. GQA 6 / 16K / batch 512: 11.58 → 4.53 ms).
+  That is the same class as the one-row `pr_k64_c64` config (4.40 ms on the same shape, §1; different
+  runs, so a few-percent difference is not meaningful).
+- **D=256 decode, GQA 6 (its target model): fork up to 2.91× faster** (128K KV: 2.00 → 0.69 ms).
+- **D=256 decode, GQA 4 and 8: fork 0.68–0.70× (≈30% slower)** at every KV length tested.
+- Median over all matched cases: 1.00×.
+- **Correctness:** 3 failures, all D=256 GQA 6 at 64K KV (batch 64/200/1024), error 0.0013–0.0014 vs the
+  0.0005 threshold, i.e. on the fork's own target shape. The run then **crashed** on a D=320/256 case
+  (`CUDA error: invalid argument`, the #28661 class); upstream with the §4 fix handles that case without
+  crashing.
+
+## 6. Pending on this instance
+
 - End-to-end: PR variants on Qwen3.8-27B-UD-Q4_K_XL (prefill at 4K/16K/64K depth, 2 rounds);
   upstream vs fork model sweeps on Qwen3.8-27B and Llama-3.1-8B-Instruct-Q8_0.

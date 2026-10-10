@@ -1,0 +1,10 @@
+[03:14:43] env
+[03:14:43] build llama.cpp for sm_70
+[03:36:42]   NCCL: linked
+[03:36:42] FA support matrix
+[03:36:42] FA correctness
+[1;31mFAIL[0m
+[1;31mFAIL[0m
+[FLASH_ATTN_EXT] ERR = 0.001281523 > 0.000500000   FLASH_ATTN_EXT(hsk=256,hsv=256,nh=2,nr23=[6,1],kv=65536,nb=1024,mask=1,sinks=0,max_bias=0.000000,logit_softcap=0.000000,prec=f32,type_K=f16,type_V=f16,permute=[0,1,2,3],kv_view=1,v_is_view_of_k=0,n_kv_max=0): [1;31mFAIL[0m
+[03:39:07] FA kernel perf
+[03:46:55] done: bench/results/phase0-llama-superfast-v100-20261010-031443-70a805e2950e
