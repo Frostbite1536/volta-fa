@@ -1,0 +1,22 @@
+[03:48:51] build upstream
+[03:48:53] correctness upstream
+  149/149 tests passed
+[03:49:13] build pr
+[03:49:15] correctness pr
+  149/149 tests passed
+[03:49:35] build pr_k64_c64
+[03:49:38] correctness pr_k64_c64
+  149/149 tests passed
+[03:49:57] kernel perf upstream round 1  gpu[sm,mem,temp,power,throttle]: 1230 MHz, 877 MHz, 40, 41.09 W, 0x0000000000000000
+[03:50:20] kernel perf pr round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 49.07 W, 0x0000000000000000
+[03:50:43] kernel perf pr_k64_c64 round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 47, 49.84 W, 0x0000000000000000
+[03:51:05] kernel perf upstream round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 52, 49.51 W, 0x0000000000000000
+[03:51:28] kernel perf pr round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 51, 51.79 W, 0x0000000000000000
+[03:51:51] kernel perf pr_k64_c64 round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 52, 52.06 W, 0x0000000000000000
+[03:52:13] llama-bench upstream round 1  gpu: 1380 MHz, 877 MHz, 56, 51.47 W, 0x0000000000000000
+[03:55:32] llama-bench pr round 1  gpu: 1380 MHz, 877 MHz, 76, 70.22 W, 0x0000000000000000
+[03:58:43] llama-bench pr_k64_c64 round 1  gpu: 1380 MHz, 877 MHz, 77, 70.52 W, 0x0000000000000000
+[04:01:48] llama-bench upstream round 2  gpu: 1380 MHz, 877 MHz, 75, 69.47 W, 0x0000000000000000
+[04:05:18] llama-bench pr round 2  gpu: 1380 MHz, 877 MHz, 76, 70.57 W, 0x0000000000000000
+[04:08:30] llama-bench pr_k64_c64 round 2  gpu: 1380 MHz, 877 MHz, 77, 70.61 W, 0x0000000000000000
+[04:11:34] done: /root/volta-fa/bench/results/pr27997-20261010-034851-70a805e2950e (summary.md)

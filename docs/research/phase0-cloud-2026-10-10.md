@@ -25,7 +25,23 @@ Reading: spill removal is worth ~1.43× (the PR); occupancy without spill remova
 (≈17.8 TFLOPS) → `pr` 8.15 ms → `pr_k64_c64` 4.40 ms (≈47 TFLOPS), faster than upstream's own D=128
 kernel at equal shape class (§2).
 
-End-to-end (Qwen3.8-27B prefill at depth): pending (§5).
+### 1.1 End to end: Qwen3.8-27B-UD-Q4_K_XL prefill at depth
+
+`bench/results/pr27997-20261010-034851-70a805e2950e/`. `llama-bench -fa on -p 1024 -n 0 -d 4096,16384,65536 -r 5`,
+2 interleaved rounds per variant (kernel-level rounds re-run in the same session agree with §1 within 1%).
+
+| depth | upstream t/s | `pr` t/s | `pr_k64_c64` t/s | `pr` vs up | `pr_k64_c64` vs up |
+| --- | --- | --- | --- | --- | --- |
+| 4K | 766 (724–807) | 714 (681–748) | 694 (691–696) | 0.93× | 0.91× |
+| 16K | 636 (622–651) | 665 (662–668) | 694 (686–701) | 1.04× | 1.09× |
+| **64K** | **374** (374–374) | **456** (456–457) | **543** (543–543) | **1.22×** | **1.45×** |
+
+- 64K reproduces the PR author's own number (+21.88% at 65K for Qwen3.8 27B; here +22%), and `pr_k64_c64`
+  doubles the gain (+45%).
+- 4K is **inconclusive**: per-run stddev there is ±31–60 t/s (4–9%); the high upstream round 1 (807) was the
+  only run on a cool GPU (56 °C vs 75–77 °C for all others). In round 2 (all warm) the three are within one
+  stddev (724 ± 32, 681 ± 60, 696 ± 32). Needs more reps before claiming either a gain or a regression at
+  short depth.
 
 ## 2. Upstream FA kernel throughput by head dim (single run)
 
