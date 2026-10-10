@@ -1,0 +1,92 @@
+# Phase 0 on a cloud V100 (2026-10-10)
+
+Hardware: Vast.ai, **Tesla V100-PCIE-32GB** (same part as the home box), 1380 MHz max SM clock,
+250 W, PCIe 3.0 x16, driver 580.173.02, CUDA 12.8.93, Ubuntu 24.04 container, AMD EPYC 7302P.
+llama.cpp `79e2e74` (`bench/LLAMA_COMMIT`). Raw data under `bench/results/` (paths below).
+Single-GPU instance: no P2P / multi-GPU results here.
+
+## 1. PR #27997 and variants: D=256 prefill kernel (kernel level)
+
+`bench/results/pr27997-20261010-025229-70a805e2950e/summary.md`. test-backend-ops perf, D=256,
+nh=4, batch 512 (the ncols=64 path), KV 4K/16K/64K (+128K for GQA 6), GQA 2/4/6. Three interleaved
+rounds; spread per variant < 1%; no throttling logged (SM clock 1380 MHz after the first warm-up
+sample). Every variant passed all 149 `hsk=256` correctness cases.
+
+| variant | config row change vs Ampere fallback | stack (spill) | blocks/SM | speedup vs upstream |
+| --- | --- | --- | --- | --- |
+| upstream | — | 432–640 B | 1 | 1.00× |
+| `pr` (#27997) | V2 64, Q in smem | 48–112 B | 1 | **1.41–1.45×** |
+| `pr_comb64` | + combine 64 | 48–112 B | 1 | 1.41–1.45× |
+| `comb64` | combine 64 only | 432–640 B | 2 | 0.80–1.14× |
+| **`pr_k64_c64`** | V2 64, K2 64, combine 64, Q in smem | 48–160 B | **2** | **2.26–2.65×** |
+
+Reading: spill removal is worth ~1.43× (the PR); occupancy without spill removal mostly hurts
+(`comb64`); both together (`pr_k64_c64`) is worth ~2.5×. Example, GQA 6 / 16K KV: upstream 11.62 ms
+(≈17.8 TFLOPS) → `pr` 8.15 ms → `pr_k64_c64` 4.40 ms (≈47 TFLOPS), faster than upstream's own D=128
+kernel at equal shape class (§2).
+
+End-to-end (Qwen3.8-27B prefill at depth): pending (§5).
+
+## 2. Upstream FA kernel throughput by head dim (single run)
+
+`bench/results/phase0-llama.cpp-20261010-023729-70a805e2950e/fa-perf.sql` (207 cases, 20 unsupported).
+Prefill-class cases (batch 4096, KV 4K–64K):
+
+| head dim | no GQA | GQA 4 | GQA 8 |
+| --- | --- | --- | --- |
+| 64 | 16 TFLOPS | 30 | 32–33 |
+| 128 | 22 | 39–40 | 43 |
+| 256 | **10** | **21** | **22** |
+| 512 | — | 20–21 | 21 |
+| 576/512 (MLA) | — | 21–22 | 21–22 |
+
+Also: D=256 GQA 16 batch 512 = **8.9 TFLOPS**; D=72 (Qwen-VL) = 9.3 TFLOPS. Peak FP16 tensor
+throughput of a V100 PCIe is ~112 TFLOPS; D=128 reaches ~38% of it, D=256 ~19%.
+
+## 3. Quantised-KV decode (single run, same file)
+
+| case (batch 1) | f16 K/V | quantised K/V | ratio |
+| --- | --- | --- | --- |
+| D=64, GQA 8, KV 7680 | 33 µs | q4_0 237 µs, q8_0 238 µs | **7.2×** |
+| D=256, GQA 12, KV 16384 | 80 µs | q4_0 190 µs | 2.4× |
+| D=256, GQA 16, KV 10000 | 145 µs | q8_0 220 µs | 1.5× |
+| D=256, GQA 12, KV 16384 | 80 µs | bf16 204 µs | 2.6× (no BF16 on Volta) |
+
+Consistent with the code reading (research gap 2): on Volta, GQA ≥ 4 decode goes to the TILE kernel,
+which converts the whole quantised K/V cache to F16 per call.
+
+## 4. Crash: test-backend-ops FLASH_ATTN_EXT aborts on Volta
+
+The full correctness run aborted after 3964 passing cases (`fa-test.txt.gz`):
+`fattn-mma-f16.cuh:1849: ERROR: CUDA kernel flash_attn_ext_f16 has no device code compatible with
+CUDA arch 700`. Reproduces alone with case `hsk=128,hsv=128,nh=1,nr23=[8,1],kv=5003,nb=4,mask=1,…,
+n_kv_max=512` (test-backend-ops.cpp:11696):
+
+```
+test-backend-ops test -b CUDA0 -o FLASH_ATTN_EXT -p 'hsk=128,hsv=128,nh=1,nr23=\[8,1\],kv=5003,nb=4,.*n_kv_max=512'
+```
+
+Cause (code reading, fattn.cu at 79e2e74):
+1. Kernel selection (`fattn.cu:668-681`) computes the effective GQA ratio as if the GQA optimisation
+   applies: 4 × 8 = 32 > 16 → MMA kernel.
+2. Dispatch (`fattn.cu:203-216`) disables the GQA optimisation when K/V length is not a multiple of
+   `FATTN_KQ_STRIDE` (5003 here), or there is no mask, ALiBi, or misaligned strides; on Volta it then
+   uses `ncols2 = 1`.
+3. `ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1` (`fattn.cu:177-182`) takes the
+   `Q->ne[1] <= 16/ncols2` branch → 16-column instance. Volta compiles every instance with
+   `ncols1*ncols2 < 32` as `NO_DEVICE_CODE` (`fattn-mma-f16.cuh:1846-1851`). The 8-column branch just
+   above is guarded with `turing_mma_available(cc)`; the 16-column branch is not.
+
+Candidate one-line fix (being verified on the V100, §4.1): `if (!volta_mma_available(cc) && Q->ne[1] <= 16/ncols2)`
+so Volta falls through to the 32-column instance. Not found among upstream issues on 2026-10-10
+(#28661 is a different Volta FA crash: non-standard head dims).
+
+### 4.1 Fix verification
+
+Pending.
+
+## 5. Pending on this instance
+
+- Superfast fork (`70df871`) kernel-level Phase 0, same kit.
+- End-to-end: PR variants on Qwen3.8-27B-UD-Q4_K_XL (prefill at 4K/16K/64K depth, 2 rounds);
+  upstream vs fork model sweeps on Qwen3.8-27B and Llama-3.1-8B-Instruct-Q8_0.
