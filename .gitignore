@@ -57,3 +57,10 @@ third_party/pr27997-work/
 __pycache__/
 *.pyc
 third_party/pr27997-static/
+
+# Raw benchmark logs stay local (gzipped copies / summaries are committed)
+bench/results/**/*.err
+bench/results/**/*.build.log
+bench/results/**/build.log
+bench/results/**/fa-test*.txt
+bench/results/**/fa-support.txt
