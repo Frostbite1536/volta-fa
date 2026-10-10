@@ -134,7 +134,7 @@ f16, because q8_0/q4_0 is fewer bytes.
     kernels), and the new D=128/256 unpadded-KV cases (18).
   - The unfiltered `MUL_MAT` run aborted at `MUL_MAT(type_a=q4_K,…,n=9,k=1024,k_v=1280)`:
     `GGML_ASSERT(convert_func != nullptr)` in the cuBLAS path, because there is no non-contiguous q4_K converter.
-    Untouched by these patches: upstream's table has no q4_K entry either (inferred from the code; a run on an unpatched sm_52 build is pending).
+    Untouched by these patches: unpatched upstream (79e2e74, sm_52 build) aborts with the same assert on the same case (verified 2026-10-10).
 
 ## Verification plan (V100, `bench/patches/run.sh`, variants `upstream … p6cfg qkv conv conv8`)
 

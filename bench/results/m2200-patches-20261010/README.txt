@@ -5,5 +5,5 @@ the Volta-only selection changes (0001/0002/0004) are not exercised here.
 
 fa.txt.gz          test-backend-ops test -b CUDA0 -o FLASH_ATTN_EXT          4200/4200 passed
 mulmat-sub.txt.gz  ... -o MUL_MAT -p 'type_a=(q4_0|q8_0|q4_1|q5_0|q5_1|bf16|f16|f32),'   1297/1297 passed
-mulmat.txt.gz      ... -o MUL_MAT (unfiltered)   aborted at a q4_K non-contiguous case (no q4_K nc converter;
+mulmat.txt.gz      ... -o MUL_MAT (unfiltered)   aborted at a q4_K non-contiguous case (no q4_K nc converter; unpatched upstream aborts identically;
                    see docs/design/P8-quantised-kv-decode.md "Local GPU correctness")
