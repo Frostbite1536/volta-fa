@@ -1,0 +1,4 @@
+[04:44:27] env
+[04:44:27] llama-bench Qwen3.8-27B-UD-Q4_K_XL
+[04:50:34]   depth sweep failed (see .err)
+[05:12:40] done: bench/results/phase0-llama-superfast-v100-20261010-044427-70a805e2950e

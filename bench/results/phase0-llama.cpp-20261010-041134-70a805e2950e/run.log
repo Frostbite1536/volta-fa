@@ -1,0 +1,3 @@
+[04:11:34] env
+[04:11:34] llama-bench Qwen3.8-27B-UD-Q4_K_XL
+[04:44:27] done: bench/results/phase0-llama.cpp-20261010-041134-70a805e2950e

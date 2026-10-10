@@ -121,7 +121,37 @@ previously-crashing configuration launches.
   (`CUDA error: invalid argument`, the #28661 class); upstream with the §4 fix handles that case without
   crashing.
 
-## 6. Pending on this instance
+## 6. End to end: upstream vs fork (llama-bench, 3 reps per test, single session)
 
-- End-to-end: PR variants on Qwen3.8-27B-UD-Q4_K_XL (prefill at 4K/16K/64K depth, 2 rounds);
-  upstream vs fork model sweeps on Qwen3.8-27B and Llama-3.1-8B-Instruct-Q8_0.
+Upstream: `bench/results/phase0-llama.cpp-20261010-041134-…` (Qwen) and `…-051240-…` (Llama).
+Fork: `bench/results/phase0-llama-superfast-v100-20261010-044427-…` (Qwen) and `…-052626-…` (Llama).
+Tables: `python3 bench/analyze.py lb <upstream>/lb-<model>-<sweep>.jsonl <fork>/lb-<model>-<sweep>.jsonl`.
+Decode (tg128) has ±5–20% run-to-run spread on this host; differences inside that are not claimed.
+The fork cannot run Qwen3.8-27B with FA off (`GGML_ASSERT(kv_count == nullptr || use_flash_attn)` in
+its llama-graph.cpp), so its FA-off depth rows are missing.
+
+**Qwen3.8-27B-UD-Q4_K_XL (D=256, GQA 6: the fork's target)**
+- Small batches at depth (speculative-verify shape): **pp8 +80–93%, pp16 +81–112%, pp4 +25–34%**; pp1/pp2 equal.
+- Prefill at depth: pp512 @32K **+23%**, @16K +8%; pp4096 @32K +9%.
+- Prefill at no/short depth: **pp512 −19%, pp4096 −14%** at depth 0; −3% at 4K.
+- Decode: +10–27% at 4K–32K, but within the spread.
+
+**Llama-3.1-8B-Instruct-Q8_0 (D=128, GQA 4)**
+- Small batches at depth: **pp16 −23 to −27%**, pp8 −10 to −13% (spread-marginal), pp1–pp4 equal.
+- Prefill: pp4096 **−10%** at 4K–32K depth and **−24%** at depth 0; pp512 +3 to +9% at depth.
+- Decode: mostly within spread (+39% at 32K is marginal: 24.5 ± 4.9 vs 34.1 ± 2.2).
+
+**Upstream-only observations**
+- FA matters a lot at depth: Llama pp4096 @32K FA on 1255 vs off 294 t/s (4.3×); Qwen 497 vs 304 (1.6×).
+- Quantised KV costs decode on D=128: Llama tg128 @16K f16 43.9 → q8_0 28.1 / q4_0 26.7 t/s (−36 to −39%),
+  matching the kernel-level gap in §3. On Qwen (D=256, GQA 6) there is no measurable decode penalty.
+
+**Reading:** the fork is a specialisation for Qwen3.8-27B. Its large wins are speculative-verify batches and
+long-context prefill on that model; on a D=128 GQA-4 model it is 10–27% slower in several prefill and
+small-batch shapes. Its D=256 prefill gain overlaps with what the one-row `pr_k64_c64` config gives
+upstream (§1).
+
+## 7. Not measured here
+
+Multi-GPU / PCIe P2P (single-GPU instance), Nsight Compute metrics (unprivileged container), perplexity
+of the fork's D=256 GQA-6 path (accuracy failures in §5).

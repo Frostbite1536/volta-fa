@@ -1,0 +1,182 @@
+[setup] base packages
+Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:2 http://archive.ubuntu.com/ubuntu noble InRelease
+Hit:3 http://archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:4 http://archive.ubuntu.com/ubuntu noble-backports InRelease
+Hit:5 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64  InRelease
+Reading package lists...
+W: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/InRelease: Key is stored in legacy trusted.gpg keyring (/etc/apt/trusted.gpg), see the DEPRECATION section in apt-key(8) for details.
+Reading package lists...
+Building dependency tree...
+Reading state information...
+ca-certificates is already the newest version (20260601~24.04.1).
+git is already the newest version (1:2.43.0-1ubuntu7.3).
+cmake is already the newest version (3.28.3-1build7).
+ninja-build is already the newest version (1.11.1-2).
+build-essential is already the newest version (12.10ubuntu1).
+python3-venv is already the newest version (3.12.3-0ubuntu2.1).
+python3-venv set to manually installed.
+wget is already the newest version (1.21.4-1ubuntu4.5).
+tmux is already the newest version (3.4-1ubuntu0.1).
+The following additional packages will be installed:
+  libhiredis1.1.0 libperl5.38t64 perl-base perl-modules-5.38
+Suggested packages:
+  distcc | icecc perl-doc libterm-readline-gnu-perl
+  | libterm-readline-perl-perl libtap-harness-archive-perl
+The following NEW packages will be installed:
+  ccache libhiredis1.1.0
+The following packages will be upgraded:
+  libperl5.38t64 perl perl-base perl-modules-5.38
+4 upgraded, 2 newly installed, 0 to remove and 62 not upgraded.
+Need to get 10.7 MB of archives.
+After this operation, 1760 kB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libperl5.38t64 amd64 5.38.2-3.2ubuntu0.6 [4864 kB]
+Get:2 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 perl amd64 5.38.2-3.2ubuntu0.6 [231 kB]
+Get:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 perl-base amd64 5.38.2-3.2ubuntu0.6 [1826 kB]
+Get:4 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 perl-modules-5.38 all 5.38.2-3.2ubuntu0.6 [3110 kB]
+Get:5 http://archive.ubuntu.com/ubuntu noble/universe amd64 libhiredis1.1.0 amd64 1.2.0-6ubuntu3 [41.4 kB]
+Get:6 http://archive.ubuntu.com/ubuntu noble/universe amd64 ccache amd64 4.9.1-1 [592 kB]
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 10.7 MB in 2s (5030 kB/s)
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 42189 files and directories currently installed.)
+Preparing to unpack .../libperl5.38t64_5.38.2-3.2ubuntu0.6_amd64.deb ...
+Unpacking libperl5.38t64:amd64 (5.38.2-3.2ubuntu0.6) over (5.38.2-3.2ubuntu0.4) ...
+Preparing to unpack .../perl_5.38.2-3.2ubuntu0.6_amd64.deb ...
+Unpacking perl (5.38.2-3.2ubuntu0.6) over (5.38.2-3.2ubuntu0.4) ...
+Preparing to unpack .../perl-base_5.38.2-3.2ubuntu0.6_amd64.deb ...
+Unpacking perl-base (5.38.2-3.2ubuntu0.6) over (5.38.2-3.2ubuntu0.4) ...
+Setting up perl-base (5.38.2-3.2ubuntu0.6) ...
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 42189 files and directories currently installed.)
+Preparing to unpack .../perl-modules-5.38_5.38.2-3.2ubuntu0.6_all.deb ...
+Unpacking perl-modules-5.38 (5.38.2-3.2ubuntu0.6) over (5.38.2-3.2ubuntu0.4) ...
+Selecting previously unselected package libhiredis1.1.0:amd64.
+Preparing to unpack .../libhiredis1.1.0_1.2.0-6ubuntu3_amd64.deb ...
+Unpacking libhiredis1.1.0:amd64 (1.2.0-6ubuntu3) ...
+Selecting previously unselected package ccache.
+Preparing to unpack .../ccache_4.9.1-1_amd64.deb ...
+Unpacking ccache (4.9.1-1) ...
+Setting up perl-modules-5.38 (5.38.2-3.2ubuntu0.6) ...
+Setting up libperl5.38t64:amd64 (5.38.2-3.2ubuntu0.6) ...
+Setting up libhiredis1.1.0:amd64 (1.2.0-6ubuntu3) ...
+Setting up ccache (4.9.1-1) ...
+Updating symlinks in /usr/lib/ccache ...
+Setting up perl (5.38.2-3.2ubuntu0.6) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
+[setup] NCCL (for -sm tensor runs; harmless on 1 GPU)
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages will be DOWNGRADED:
+  libnccl-dev libnccl2
+0 upgraded, 0 newly installed, 2 downgraded, 0 to remove and 60 not upgraded.
+E: Packages were downgraded and -y was used without --allow-downgrades.
+[setup]   NCCL for CUDA 12.8 not installed; tensor-split nccl runs will fall back
+[setup] llama.cpp at the pinned commit
+[setup] llama-superfast-v100 fork at the pinned commit (A/B against upstream in Phase 0)
+  fork 70df871 2026-10-09 Update README.md
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following additional packages will be installed:
+  cpp-14 cpp-14-x86-64-linux-gnu g++-14-x86-64-linux-gnu
+  gcc-14-x86-64-linux-gnu libgcc-14-dev libstdc++-14-dev
+Suggested packages:
+  gcc-14-locales cpp-14-doc g++-14-multilib gcc-14-doc gcc-14-multilib
+  libstdc++-14-doc
+The following NEW packages will be installed:
+  cpp-14 cpp-14-x86-64-linux-gnu g++-14 g++-14-x86-64-linux-gnu gcc-14
+  gcc-14-x86-64-linux-gnu libgcc-14-dev libstdc++-14-dev
+0 upgraded, 8 newly installed, 0 to remove and 62 not upgraded.
+Need to get 54.6 MB of archives.
+After this operation, 187 MB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 cpp-14-x86-64-linux-gnu amd64 14.2.0-4ubuntu2~24.04.1 [11.9 MB]
+Get:2 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 cpp-14 amd64 14.2.0-4ubuntu2~24.04.1 [1038 B]
+Get:3 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 libgcc-14-dev amd64 14.2.0-4ubuntu2~24.04.1 [2820 kB]
+Get:4 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 gcc-14-x86-64-linux-gnu amd64 14.2.0-4ubuntu2~24.04.1 [23.4 MB]
+Get:5 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 libstdc++-14-dev amd64 14.2.0-4ubuntu2~24.04.1 [2507 kB]
+Get:6 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 g++-14-x86-64-linux-gnu amd64 14.2.0-4ubuntu2~24.04.1 [13.4 MB]
+Get:7 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 gcc-14 amd64 14.2.0-4ubuntu2~24.04.1 [522 kB]
+Get:8 http://archive.ubuntu.com/ubuntu noble-updates/universe amd64 g++-14 amd64 14.2.0-4ubuntu2~24.04.1 [19.0 kB]
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 54.6 MB in 4s (12.7 MB/s)
+Selecting previously unselected package cpp-14-x86-64-linux-gnu.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 42212 files and directories currently installed.)
+Preparing to unpack .../0-cpp-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking cpp-14-x86-64-linux-gnu (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package cpp-14.
+Preparing to unpack .../1-cpp-14_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking cpp-14 (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package libgcc-14-dev:amd64.
+Preparing to unpack .../2-libgcc-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking libgcc-14-dev:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package gcc-14-x86-64-linux-gnu.
+Preparing to unpack .../3-gcc-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking gcc-14-x86-64-linux-gnu (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package libstdc++-14-dev:amd64.
+Preparing to unpack .../4-libstdc++-14-dev_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking libstdc++-14-dev:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package g++-14-x86-64-linux-gnu.
+Preparing to unpack .../5-g++-14-x86-64-linux-gnu_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking g++-14-x86-64-linux-gnu (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package gcc-14.
+Preparing to unpack .../6-gcc-14_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking gcc-14 (14.2.0-4ubuntu2~24.04.1) ...
+Selecting previously unselected package g++-14.
+Preparing to unpack .../7-g++-14_14.2.0-4ubuntu2~24.04.1_amd64.deb ...
+Unpacking g++-14 (14.2.0-4ubuntu2~24.04.1) ...
+Setting up cpp-14-x86-64-linux-gnu (14.2.0-4ubuntu2~24.04.1) ...
+Setting up cpp-14 (14.2.0-4ubuntu2~24.04.1) ...
+Setting up libgcc-14-dev:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+Setting up libstdc++-14-dev:amd64 (14.2.0-4ubuntu2~24.04.1) ...
+Setting up gcc-14-x86-64-linux-gnu (14.2.0-4ubuntu2~24.04.1) ...
+Setting up gcc-14 (14.2.0-4ubuntu2~24.04.1) ...
+Setting up g++-14-x86-64-linux-gnu (14.2.0-4ubuntu2~24.04.1) ...
+Setting up g++-14 (14.2.0-4ubuntu2~24.04.1) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+Processing triggers for ccache (4.9.1-1) ...
+Updating symlinks in /usr/lib/ccache ...
+[setup]   gcc-14 installed (add -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_CUDA_HOST_COMPILER=g++-14 to EXTRA_CMAKE)
+[setup] profiler capabilities
+[setup]   ncu supports GV100
+[setup]   profiling restricted to admin (RmProfilingAdminOnly=1): run ncu as root or skip it
+[setup] volta-fa CPU tests (sanity)
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Looking for a CUDA compiler
+-- Looking for a CUDA compiler - /usr/local/cuda-12.8/bin/nvcc
+-- The CUDA compiler identification is NVIDIA 12.8.93 with host compiler GNU 13.3.0
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /usr/local/cuda-12.8/bin/nvcc - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Found CUDAToolkit: /usr/local/cuda-12.8/targets/x86_64-linux/include (found version "12.8.93")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Found Python3: /root/volta-fa/.venv/bin/python3.12 (found version "3.12.3") found components: Interpreter
+-- Configuring done (5.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /root/volta-fa/build-cpu
+[1/17] Building CXX object tests/CMakeFiles/test_fp16.dir/test_fp16.cpp.o
+[2/17] Building CXX object src/reference/CMakeFiles/volta_fa_ref.dir/attention_reference.cpp.o
+[3/17] Building CXX object tests/CMakeFiles/test_reference.dir/test_reference.cpp.o
+[4/17] Building CXX object src/reference/CMakeFiles/volta_fa_ref.dir/attention_tiled_model.cpp.o
+[5/17] Building CXX object src/p2p/CMakeFiles/volta_fa_p2p.dir/p2p.cpp.o
+[6/17] Building CXX object tests/CMakeFiles/test_tiled_model.dir/test_tiled_model.cpp.o
+[7/17] Building CXX object tests/CMakeFiles/error_budget.dir/error_budget.cpp.o
+[8/17] Linking CXX static library src/p2p/libvolta_fa_p2p.a
+[9/17] Linking CXX static library src/reference/libvolta_fa_ref.a
+[10/17] Building CXX object tests/CMakeFiles/test_p2p.dir/test_p2p.cpp.o
+[11/17] Building CXX object bench/CMakeFiles/p2p_bandwidth.dir/p2p_bandwidth.cpp.o
+[12/17] Linking CXX executable tests/test_reference
+[13/17] Linking CXX executable tests/test_fp16
+[14/17] Linking CXX executable tests/error_budget
+[15/17] Linking CXX executable tests/test_tiled_model
+[16/17] Linking CXX executable tests/test_p2p
+[17/17] Linking CXX executable bench/p2p_bandwidth
