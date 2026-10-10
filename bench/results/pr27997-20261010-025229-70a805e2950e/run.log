@@ -1,0 +1,31 @@
+[02:52:31] build upstream
+[02:58:09] correctness upstream
+  149/149 tests passed
+[02:58:37] build pr
+[03:01:03] correctness pr
+  149/149 tests passed
+[03:01:34] build comb64
+[03:04:03] correctness comb64
+  149/149 tests passed
+[03:04:26] build pr_comb64
+[03:06:25] correctness pr_comb64
+  149/149 tests passed
+[03:06:47] build pr_k64_c64
+[03:08:44] correctness pr_k64_c64
+  149/149 tests passed
+[03:09:05] kernel perf upstream round 1  gpu[sm,mem,temp,power,throttle]: 1230 MHz, 877 MHz, 36, 38.31 W, 0x0000000000000000
+[03:09:28] kernel perf pr round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 42, 47.84 W, 0x0000000000000000
+[03:09:50] kernel perf comb64 round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 49.01 W, 0x0000000000000000
+[03:10:13] kernel perf pr_comb64 round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 47, 48.04 W, 0x0000000000000000
+[03:10:36] kernel perf pr_k64_c64 round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 49, 50.66 W, 0x0000000000000000
+[03:10:59] kernel perf upstream round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 53, 50.47 W, 0x0000000000000000
+[03:11:21] kernel perf pr round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 52, 52.29 W, 0x0000000000000000
+[03:11:44] kernel perf comb64 round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 52, 52.31 W, 0x0000000000000000
+[03:12:06] kernel perf pr_comb64 round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 54, 53.44 W, 0x0000000000000000
+[03:12:28] kernel perf pr_k64_c64 round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 54, 53.18 W, 0x0000000000000000
+[03:12:51] kernel perf upstream round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 57, 52.19 W, 0x0000000000000000
+[03:13:13] kernel perf pr round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 55, 54.05 W, 0x0000000000000000
+[03:13:36] kernel perf comb64 round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 55, 54.09 W, 0x0000000000000000
+[03:13:58] kernel perf pr_comb64 round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 55, 51.42 W, 0x0000000000000000
+[03:14:20] kernel perf pr_k64_c64 round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 55, 54.29 W, 0x0000000000000000
+[03:14:42] done: /root/volta-fa/bench/results/pr27997-20261010-025229-70a805e2950e (summary.md)

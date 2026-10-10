@@ -1,0 +1,8 @@
+[02:37:29] env
+[02:37:29] build llama.cpp for sm_70
+[02:42:58]   NCCL: linked
+[02:42:58] FA support matrix
+[02:42:59] FA correctness
+  (no pass/fail summary found)
+[02:44:39] FA kernel perf
+[02:52:29] done: bench/results/phase0-llama.cpp-20261010-023729-70a805e2950e
