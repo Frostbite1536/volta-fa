@@ -1,0 +1,81 @@
+From c9c7540606106ff6f17f336ba1b7c595aca04bd7 Mon Sep 17 00:00:00 2001
+From: volta-fa <volta-fa@localhost>
+Date: Sat, 10 Oct 2026 08:14:42 -0500
+Subject: [PATCH 2/3] CUDA: Volta FA, pad non-power-of-two GQA ratios for small
+ batches
+
+For GQA 3/5/6/7 and 3-16 query tokens, pack the Q heads of a K/V head into one MMA tile
+padded to the next power of two (masked heads), so K/V is streamed once instead of once
+per 2-head group. Guard the sink read for masked heads.
+---
+ ggml/src/ggml-cuda/fattn-mma-f16.cuh |  5 ++++-
+ ggml/src/ggml-cuda/fattn.cu          |  7 +++++++
+ tests/test-backend-ops.cpp           | 11 +++++++++++
+ 3 files changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+index 7f0f6abfd..f882e28d5 100644
+--- a/ggml/src/ggml-cuda/fattn-mma-f16.cuh
++++ b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+@@ -1431,7 +1431,10 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
+ #pragma unroll
+         for (int col = 0; col < cols_per_thread; ++col) {
+             const int jc = (threadIdx.y/np)*cols_per_warp + (cols_per_warp == 8 ? T_C_KQ::get_j(col) : T_C_KQ::get_i(2*col));
+-            const float sink = sinks_f[jc % ncols2];
++            // Padded Q heads (zt_gqa*ncols2 + c >= gqa_ratio) are masked: do not read their sink, it would belong to
++            // the next K/V head or lie past the end of the sinks array.
++            const int   c_sink = jc % ncols2;
++            const float sink   = ncols2 == 1 || zt_gqa*ncols2 + c_sink < gqa_ratio ? sinks_f[c_sink] : -INFINITY;
+ 
+             const float KQ_max_new = fmaxf(KQ_max[col], sink);
+             const float KQ_max_diff = KQ_max[col] - KQ_max_new;
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index 9187e674f..48ed116e1 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -194,6 +194,9 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+ // Q heads per MMA tile (ncols2) on Volta. Kernel selection and the Volta dispatch below must agree on this value:
+ // selection decides VEC/TILE/MMA from n_q*ncols2, and Volta MMA instances need ncols1*ncols2 >= 32.
+ // Without the GQA optimization every Q head is its own tile (ncols2 = 1).
++// For a non-power-of-two GQA ratio (3, 5, 6, 7) and a small batch, the ratio is padded to the next power of two:
++// the kernel masks the extra heads, and each K/V head is then streamed once instead of once per 2-head group.
++// Large batches keep exact divisors, where padding would waste tensor core columns without saving K/V reads.
+ static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_ratio, const bool gqa_opt, const int64_t n_q) {
+     if (!gqa_opt) {
+         return 1;
+@@ -204,6 +207,10 @@ static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_rat
+     if (gqa_ratio % 4 == 0) {
+         return 4;
+     }
++    const bool gqa_pow2 = (gqa_ratio & (gqa_ratio - 1)) == 0;
++    if (!gqa_pow2 && gqa_ratio < 8 && DKQ <= 256 && n_q >= 3 && n_q <= 16) {
++        return gqa_ratio > 4 ? 8 : 4;
++    }
+     if (DKQ <= 256 && gqa_ratio % 2 == 0) {
+         return 2;
+     }
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 05b687558..bd4f398a6 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -11695,6 +11695,17 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     // KV not a multiple of the compaction workgroup size.
+     test_cases.emplace_back(new test_flash_attn_ext(128, 128, 1, { 8, 1}, 5003, 4, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false,  512));
+ 
++    // Non-power-of-two GQA ratios at small batch sizes: on Volta the MMA kernel pads the Q heads per tile
++    // to the next power of two and masks the extra heads (including their attention sinks).
++    for (int hs : { 128, 256 }) {
++        for (int gqa : { 3, 5, 6, 7 }) {
++            for (int nb : { 1, 2, 3, 4, 8, 16 }) {
++                for (bool sinks : { false, true }) {
++                    test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 4096, nb, true, sinks, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++                }
++            }
++        }
++    }
+     // GQA optimization disabled (KV length not a multiple of FATTN_KQ_STRIDE) at small batch sizes.
+     for (int gqa : { 4, 6, 8 }) {
+         for (int nb : { 4, 8, 16 }) {
+-- 
+2.43.0
+

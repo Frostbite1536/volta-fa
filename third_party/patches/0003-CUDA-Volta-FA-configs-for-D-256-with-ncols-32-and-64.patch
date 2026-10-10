@@ -1,0 +1,28 @@
+From 2479b55b24980ebcf35ee52b52d8ff81921b627c Mon Sep 17 00:00:00 2001
+From: volta-fa <volta-fa@localhost>
+Date: Sat, 10 Oct 2026 08:14:42 -0500
+Subject: [PATCH 3/3] CUDA: Volta FA configs for D=256 with ncols 32 and 64
+
+Keep Q in shared memory and halve nbatch_K2/nbatch_combine: no register spills and
+2 blocks/SM instead of 1 (the Ampere fallback spills 432-640 B per thread).
+---
+ ggml/src/ggml-cuda/fattn-mma-f16.cuh | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+index f882e28d5..ce50c1eba 100644
+--- a/ggml/src/ggml-cuda/fattn-mma-f16.cuh
++++ b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+@@ -123,6 +123,9 @@ static constexpr __host__ __device__ fattn_mma_config ggml_cuda_fattn_mma_get_co
+     GGML_CUDA_FATTN_MMA_CONFIG_CASE(576, 512, 32, 128, 2,  32, 160, 128,  64, 1, false);
+     GGML_CUDA_FATTN_MMA_CONFIG_CASE(576, 512, 64, 256, 1,  32, 160, 128,  64, 1, false);
+ 
++    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 32, 128, 2,  32,  64,  64,  64, 2, false);
++    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 64, 128, 2,  32,  64,  64,  64, 2, false);
++
+     // TODO tune specifically for Volta
+     return ggml_cuda_fattn_mma_get_config_ampere(DKQ, DV, ncols);
+ }
+-- 
+2.43.0
+

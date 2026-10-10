@@ -1,0 +1,118 @@
+From 5a5bb3225a7c3066b348597aedf027c0283fe368 Mon Sep 17 00:00:00 2001
+From: volta-fa <volta-fa@localhost>
+Date: Sat, 10 Oct 2026 08:14:42 -0500
+Subject: [PATCH 1/3] CUDA: Volta FA, one heads-per-tile rule for kernel
+ selection and dispatch
+
+Kernel selection assumed the GQA optimization whenever there is no ALiBi, while the
+Volta dispatch also disables it without a mask, for unpadded K/V or misaligned strides.
+Small batches then selected MMA but were dispatched as a 16-column instance, which
+Volta compiles as NO_DEVICE_CODE (abort). Use one helper for both, and never dispatch
+a < 32 column instance on Volta.
+---
+ ggml/src/ggml-cuda/fattn.cu | 47 ++++++++++++++++++++++++++++---------
+ tests/test-backend-ops.cpp  |  7 ++++++
+ 2 files changed, 43 insertions(+), 11 deletions(-)
+
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index bb34e01f3..9187e674f 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -175,7 +175,8 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+     }
+ 
+     if constexpr (ncols2 <= 16) {
+-        if (Q->ne[1] <= 16/ncols2) {
++        // Volta has no MMA instances with ncols1*ncols2 < 32 (they are compiled as NO_DEVICE_CODE).
++        if (!volta_mma_available(cc) && Q->ne[1] <= 16/ncols2) {
+             ggml_cuda_flash_attn_ext_mma_f16_case<DKQ, DV, 16/ncols2, ncols2>(ctx, dst);
+             return;
+         }
+@@ -190,6 +191,25 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+     ggml_cuda_flash_attn_ext_mma_f16_case<DKQ, DV, 64/ncols2, ncols2>(ctx, dst);
+ }
+ 
++// Q heads per MMA tile (ncols2) on Volta. Kernel selection and the Volta dispatch below must agree on this value:
++// selection decides VEC/TILE/MMA from n_q*ncols2, and Volta MMA instances need ncols1*ncols2 >= 32.
++// Without the GQA optimization every Q head is its own tile (ncols2 = 1).
++static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_ratio, const bool gqa_opt, const int64_t n_q) {
++    if (!gqa_opt) {
++        return 1;
++    }
++    if (gqa_ratio % 8 == 0) {
++        return 8;
++    }
++    if (gqa_ratio % 4 == 0) {
++        return 4;
++    }
++    if (DKQ <= 256 && gqa_ratio % 2 == 0) {
++        return 2;
++    }
++    return 1;
++}
++
+ template <int DKQ, int DV>
+ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
+     const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
+@@ -222,14 +242,15 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+ 
+     // On Volta the GQA optimizations aren't as impactful vs. minimizing wasted compute:
+     if (cc == GGML_CUDA_CC_VOLTA) {
+-        if (use_gqa_opt && gqa_ratio % 8 == 0) {
+-            ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
+-            return;
+-        }
+-
+-        if (use_gqa_opt && gqa_ratio % 4 == 0) {
+-            ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 4>(ctx, dst);
+-            return;
++        switch (ggml_cuda_fattn_mma_f16_volta_ncols2(DKQ, gqa_ratio, use_gqa_opt, Q->ne[1])) {
++            case 8:
++                ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
++                return;
++            case 4:
++                ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 4>(ctx, dst);
++                return;
++            default:
++                break;
+         }
+ 
+         if constexpr (DKQ <= 256) {
+@@ -671,10 +692,14 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+     }
+ 
+     if (volta_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
+-        if (can_use_vector_kernel && Q->ne[1] * gqa_ratio_eff <= 2) {
++        // Must match the Volta branch of ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2: it uses ncols2 = 1 when
++        // the GQA optimization does not apply, and a larger value here would select MMA for a batch that the
++        // dispatch then has to run as a < 32 column instance, which Volta does not compile.
++        const int volta_ncols2 = ggml_cuda_fattn_mma_f16_volta_ncols2(Q->ne[0], gqa_ratio, gqa_opt_applies, Q->ne[1]);
++        if (can_use_vector_kernel && Q->ne[1] * volta_ncols2 <= 2) {
+             return BEST_FATTN_KERNEL_VEC;
+         }
+-        if (Q->ne[1] * gqa_ratio_eff <= 16) {
++        if (Q->ne[1] * volta_ncols2 <= 16) {
+             return BEST_FATTN_KERNEL_TILE; // On Volta tensor cores are only faster for sufficiently large matrices.
+         }
+         return BEST_FATTN_KERNEL_MMA_F16;
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 4e3c6942b..05b687558 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -11695,6 +11695,13 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     // KV not a multiple of the compaction workgroup size.
+     test_cases.emplace_back(new test_flash_attn_ext(128, 128, 1, { 8, 1}, 5003, 4, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false,  512));
+ 
++    // GQA optimization disabled (KV length not a multiple of FATTN_KQ_STRIDE) at small batch sizes.
++    for (int gqa : { 4, 6, 8 }) {
++        for (int nb : { 4, 8, 16 }) {
++            test_cases.emplace_back(new test_flash_attn_ext(128, 128, 2, {gqa, 1}, 5003, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++        }
++    }
++
+     // Sparse gather: native block sizes, padded slots, and head/batch strides.
+     for (ggml_type type : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_BF16, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, GGML_TYPE_IQ4_NL}) {
+         test_cases.emplace_back(new test_flash_attn_ext(128, 96, 2, {8, 2}, 5003, 3, true, false, 0, 0, GGML_PREC_F32, type, type, {0, 1, 2, 3}, true, false, 257));
+-- 
+2.43.0
+

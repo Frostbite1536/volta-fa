@@ -1,7 +1,7 @@
 # P-6 design: small-batch attention for non-power-of-two GQA on Volta
 
-Status: **designed, patch drafted next, needs a V100 session to measure.** Owner decision points are
-marked **Decision**.
+Status: **implemented as a 3-patch series (`third_party/patches/0001..0003`), statically verified, needs a
+V100 session to measure (`bench/p6/run.sh`).** Owner decision points are marked **Decision**.
 
 ## Problem (measured)
 
@@ -99,6 +99,23 @@ On a V100 (next cloud session or the home box):
 3. End to end: `llama-bench -p 1,2,4,8,16 -n 0 -d 4096,32768` on Qwen3.8-27B; Llama-3.1-8B as the
    no-regression control; compare against the fork's numbers from 2026-10-10.
 4. Accept if: 0 new failures; GQA 6 B=8/16 at 32K ≥ 1.3× upstream; GQA 4/8 within noise.
+
+## Implementation status (2026-10-10)
+
+`third_party/patches/` (git format-patch against llama.cpp `79e2e74`):
+
+| patch | content | static checks |
+| --- | --- | --- |
+| 0001 | one Volta heads-per-tile helper (`ggml_cuda_fattn_mma_f16_volta_ncols2`) used by kernel selection **and** the Volta dispatch; never dispatch a < 32 column instance on Volta; 9 crash-class tests (GQA 4/6/8, KV 5003, 4–16 tokens) | applies alone; `fattn.cu` compiles alone |
+| 0002 | padded heads per tile for GQA 3/5/6/7 at 3–16 tokens (D ≤ 256); sink guard for masked heads; 96 tests (D 128/256 × GQA 3/5/6/7 × 1–16 tokens × sinks) | full `ggml-cuda` compiles for sm_70 (nvcc 12.8.93, 0 errors); 115 non-D=256 MMA kernels have **identical** registers/stack to upstream (the sink guard is free) |
+| 0003 | Volta rows `GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, {32,64}, 128, 2, 32, 64, 64, 64, 2, false)` | D=256 `<4,8>` stack 448 → 64 B (32 columns); ncols=64 row is the measured `pr_k64_c64` (2.3–2.65×) |
+
+Routes after 0001+0002 (traced against the compiled instance set): GQA 5/6/7 → VEC at 1 token, TILE at 2 (both
+unchanged), MMA `<4,8>` at 3–4 tokens, `<8,8>` at 5–16; GQA 3 → `<8,4>`/`<16,4>` from 5 tokens; GQA 4/8
+unchanged; GQA optimisation off → TILE for ≤ 16 tokens (was: illegal 16-column MMA).
+
+Without 0003, D=256 small-batch MMA instances spill 432–472 B (Ampere fallback rows), so 0002's gain on
+Qwen-like models is expected to be smaller than with 0003. The harness measures upstream / fix / p6 / p6cfg.
 
 ## Upstreaming
 
