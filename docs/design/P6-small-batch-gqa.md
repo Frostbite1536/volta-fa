@@ -1,8 +1,12 @@
 # P-6 design: small-batch attention for non-power-of-two GQA on Volta
 
-Status: **implemented as a 3-patch series (`third_party/patches/0001..0003`), statically verified, needs a
-V100 session to measure (`bench/patches/run.sh`, which also covers P-8's `0004..0006`).** Owner decision
-points are marked **Decision**.
+Status: **implemented as a 3-patch series (`third_party/patches/0001..0003`), measured on a V100
+(`docs/research/patches-cloud-2026-10-10.md`).** 0 new failures; the crash fix holds. D=256: 1.0–3.9× at
+kernel level, never slower (GQA 6, 32K: 2.48× / 3.92× at 8 / 16 tokens); Qwen3.8-27B +7.6% / +19.9% at
+pp8 / pp16 @32K (FA is ~16 of its 65 layers). **Not accepted as is:** D=128 regresses where upstream's
+unpadded tile was already good (GQA 6, 16 tokens: 0.86× at 32K, 0.69× at 4K; GQA 3, 16 tokens, 4K 0.83×;
+GQA 6, 8 tokens, 4K 0.91×). 0002 needs a D=128 rule change (owner decision) and must ship with 0003.
+Owner decision points are marked **Decision**.
 
 ## Problem (measured)
 

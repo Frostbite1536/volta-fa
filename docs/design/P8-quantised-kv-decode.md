@@ -1,8 +1,12 @@
 # P-8 design: decode with a quantised KV cache on Volta
 
-Status: **implemented as patches `0004..0006` (on top of P-6's `0001..0003`), statically verified for sm_70.
-The conversion kernels are bit-exact and faster on a real (Maxwell) GPU. Needs a V100 session
-(`bench/patches/run.sh`).** Owner decision points are marked **Decision**.
+Status: **implemented as patches `0004..0006` (on top of P-6's `0001..0003`), measured on a V100
+(`docs/research/patches-cloud-2026-10-10.md`).** 0 new failures (FA and MUL_MAT); conversions bit-exact,
+1.67–6.92× faster. Passed: `qkv` ≥ 2× at 1 token (2.08–3.31×), no f16 change, `conv8` ≥ 1.5× `qkv` at D=128
+(1.95–2.21×). Missed: `conv8` vs `qkv` at D=256 (1.31–1.39×) and Llama-3.1-8B q8_0 tg64 @16K (+16.7% vs
++25%; q4_0 +36.2%). The series recovers 50–57% of the quantised-vs-f16 decode gap on that model. Change 4
+gate triggered (GQA 8 ÷ GQA 4 = 1.88–1.97): GQA-packed VEC is the next design. Owner decision points are
+marked **Decision**.
 
 ## Problem (measured, `docs/research/phase0-cloud-2026-10-10.md` §3, §6)
 

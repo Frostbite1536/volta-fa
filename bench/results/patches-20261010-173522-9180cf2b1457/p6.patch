@@ -1,0 +1,142 @@
+diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+index 7f0f6abfd..f882e28d5 100644
+--- a/ggml/src/ggml-cuda/fattn-mma-f16.cuh
++++ b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+@@ -1431,7 +1431,10 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
+ #pragma unroll
+         for (int col = 0; col < cols_per_thread; ++col) {
+             const int jc = (threadIdx.y/np)*cols_per_warp + (cols_per_warp == 8 ? T_C_KQ::get_j(col) : T_C_KQ::get_i(2*col));
+-            const float sink = sinks_f[jc % ncols2];
++            // Padded Q heads (zt_gqa*ncols2 + c >= gqa_ratio) are masked: do not read their sink, it would belong to
++            // the next K/V head or lie past the end of the sinks array.
++            const int   c_sink = jc % ncols2;
++            const float sink   = ncols2 == 1 || zt_gqa*ncols2 + c_sink < gqa_ratio ? sinks_f[c_sink] : -INFINITY;
+ 
+             const float KQ_max_new = fmaxf(KQ_max[col], sink);
+             const float KQ_max_diff = KQ_max[col] - KQ_max_new;
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index bb34e01f3..48ed116e1 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -175,7 +175,8 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+     }
+ 
+     if constexpr (ncols2 <= 16) {
+-        if (Q->ne[1] <= 16/ncols2) {
++        // Volta has no MMA instances with ncols1*ncols2 < 32 (they are compiled as NO_DEVICE_CODE).
++        if (!volta_mma_available(cc) && Q->ne[1] <= 16/ncols2) {
+             ggml_cuda_flash_attn_ext_mma_f16_case<DKQ, DV, 16/ncols2, ncols2>(ctx, dst);
+             return;
+         }
+@@ -190,6 +191,32 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+     ggml_cuda_flash_attn_ext_mma_f16_case<DKQ, DV, 64/ncols2, ncols2>(ctx, dst);
+ }
+ 
++// Q heads per MMA tile (ncols2) on Volta. Kernel selection and the Volta dispatch below must agree on this value:
++// selection decides VEC/TILE/MMA from n_q*ncols2, and Volta MMA instances need ncols1*ncols2 >= 32.
++// Without the GQA optimization every Q head is its own tile (ncols2 = 1).
++// For a non-power-of-two GQA ratio (3, 5, 6, 7) and a small batch, the ratio is padded to the next power of two:
++// the kernel masks the extra heads, and each K/V head is then streamed once instead of once per 2-head group.
++// Large batches keep exact divisors, where padding would waste tensor core columns without saving K/V reads.
++static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_ratio, const bool gqa_opt, const int64_t n_q) {
++    if (!gqa_opt) {
++        return 1;
++    }
++    if (gqa_ratio % 8 == 0) {
++        return 8;
++    }
++    if (gqa_ratio % 4 == 0) {
++        return 4;
++    }
++    const bool gqa_pow2 = (gqa_ratio & (gqa_ratio - 1)) == 0;
++    if (!gqa_pow2 && gqa_ratio < 8 && DKQ <= 256 && n_q >= 3 && n_q <= 16) {
++        return gqa_ratio > 4 ? 8 : 4;
++    }
++    if (DKQ <= 256 && gqa_ratio % 2 == 0) {
++        return 2;
++    }
++    return 1;
++}
++
+ template <int DKQ, int DV>
+ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
+     const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
+@@ -222,14 +249,15 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+ 
+     // On Volta the GQA optimizations aren't as impactful vs. minimizing wasted compute:
+     if (cc == GGML_CUDA_CC_VOLTA) {
+-        if (use_gqa_opt && gqa_ratio % 8 == 0) {
+-            ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
+-            return;
+-        }
+-
+-        if (use_gqa_opt && gqa_ratio % 4 == 0) {
+-            ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 4>(ctx, dst);
+-            return;
++        switch (ggml_cuda_fattn_mma_f16_volta_ncols2(DKQ, gqa_ratio, use_gqa_opt, Q->ne[1])) {
++            case 8:
++                ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
++                return;
++            case 4:
++                ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 4>(ctx, dst);
++                return;
++            default:
++                break;
+         }
+ 
+         if constexpr (DKQ <= 256) {
+@@ -671,10 +699,14 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+     }
+ 
+     if (volta_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
+-        if (can_use_vector_kernel && Q->ne[1] * gqa_ratio_eff <= 2) {
++        // Must match the Volta branch of ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2: it uses ncols2 = 1 when
++        // the GQA optimization does not apply, and a larger value here would select MMA for a batch that the
++        // dispatch then has to run as a < 32 column instance, which Volta does not compile.
++        const int volta_ncols2 = ggml_cuda_fattn_mma_f16_volta_ncols2(Q->ne[0], gqa_ratio, gqa_opt_applies, Q->ne[1]);
++        if (can_use_vector_kernel && Q->ne[1] * volta_ncols2 <= 2) {
+             return BEST_FATTN_KERNEL_VEC;
+         }
+-        if (Q->ne[1] * gqa_ratio_eff <= 16) {
++        if (Q->ne[1] * volta_ncols2 <= 16) {
+             return BEST_FATTN_KERNEL_TILE; // On Volta tensor cores are only faster for sufficiently large matrices.
+         }
+         return BEST_FATTN_KERNEL_MMA_F16;
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 4e3c6942b..9a20f7fa8 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -11695,6 +11695,24 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     // KV not a multiple of the compaction workgroup size.
+     test_cases.emplace_back(new test_flash_attn_ext(128, 128, 1, { 8, 1}, 5003, 4, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false,  512));
+ 
++    // Non-power-of-two GQA ratios at small batch sizes: on Volta the MMA kernel pads the Q heads per tile
++    // to the next power of two and masks the extra heads (including their attention sinks).
++    for (int hs : { 128, 256 }) {
++        for (int gqa : { 3, 5, 6, 7 }) {
++            for (int nb : { 1, 2, 3, 4, 8, 16 }) {
++                for (bool sinks : { false, true }) {
++                    test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 4096, nb, true, sinks, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++                }
++            }
++        }
++    }
++    // GQA optimization disabled (KV length not a multiple of FATTN_KQ_STRIDE) at small batch sizes.
++    for (int gqa : { 4, 6, 8 }) {
++        for (int nb : { 4, 8, 16 }) {
++            test_cases.emplace_back(new test_flash_attn_ext(128, 128, 2, {gqa, 1}, 5003, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++        }
++    }
++
+     // Sparse gather: native block sizes, padded slots, and head/batch strides.
+     for (ggml_type type : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_BF16, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, GGML_TYPE_IQ4_NL}) {
+         test_cases.emplace_back(new test_flash_attn_ext(128, 96, 2, {8, 2}, 5003, 3, true, false, 0, 0, GGML_PREC_F32, type, type, {0, 1, 2, 3}, true, false, 257));
+@@ -12187,6 +12205,8 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+ 
+     // Qwen3-VL-8B https://github.com/ggml-org/llama.cpp/issues/17012
+     test_cases.emplace_back(new test_flash_attn_ext(72, 72, 16, {1, 1}, 5776, 5776, false, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++    for (int hs : {128, 256}) { for (int gqa : {3, 4, 5, 6, 7, 8}) { for (int kv : {4096, 32768}) { for (int nb : {1, 2, 4, 8, 16}) { test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 4, {gqa, 1}, kv, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16)); } } } } // patches harness (P-6)
++    for (int hs : {128, 256}) { for (int gqa : {4, 6, 8}) { for (int kv : {4096, 32768}) { for (int nb : {1, 2, 8}) { for (ggml_type t : {GGML_TYPE_Q8_0, GGML_TYPE_Q4_0}) { test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 4, {gqa, 1}, kv, nb, true, false, 0, 0, GGML_PREC_F32, t, t)); } } } } } // patches harness (P-8)
+ 
+     // Sparse flash attention (n_kv_max hint) decode across KV depths.
+     // Shapes: 576/512 DeepSeek MLA, 512/512 DeepSeek-V4/GLM-5.2, 256/256 gqa12 Qwen QSA.

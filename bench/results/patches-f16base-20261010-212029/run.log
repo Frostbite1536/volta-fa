@@ -1,0 +1,8 @@
+[21:21:07] upstream Meta-Llama-3.1-8B-Instruct-Q8_0 r1 gpu: 135 MHz, 33
+[21:21:22] upstream Qwen3.8-27B-UD-Q4_K_XL r1 gpu: 1380 MHz, 41
+[21:21:57] conv8 Meta-Llama-3.1-8B-Instruct-Q8_0 r1 gpu: 1380 MHz, 50
+[21:22:13] conv8 Qwen3.8-27B-UD-Q4_K_XL r1 gpu: 1380 MHz, 49
+[21:22:46] upstream Meta-Llama-3.1-8B-Instruct-Q8_0 r2 gpu: 1380 MHz, 53
+[21:23:01] upstream Qwen3.8-27B-UD-Q4_K_XL r2 gpu: 1380 MHz, 50
+[21:23:37] conv8 Meta-Llama-3.1-8B-Instruct-Q8_0 r2 gpu: 1380 MHz, 53
+[21:23:52] conv8 Qwen3.8-27B-UD-Q4_K_XL r2 gpu: 1380 MHz, 50

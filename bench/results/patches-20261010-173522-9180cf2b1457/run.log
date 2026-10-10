@@ -1,0 +1,48 @@
+[17:35:22] dequant microbench
+[17:35:29] build upstream
+[17:52:06] correctness upstream (full FLASH_ATTN_EXT)
+[17:54:26]   rc=134  OK=3964  FAIL=0
+[17:54:26] correctness upstream (MUL_MAT: non-contiguous quantised conversions)
+[17:55:55]   rc=0  OK=2446  FAIL=0
+[17:55:56] build fix
+[17:56:56] correctness fix (full FLASH_ATTN_EXT)
+[17:59:39]   rc=0  OK=4004  FAIL=0
+[17:59:42] build p6
+[18:03:40] correctness p6 (full FLASH_ATTN_EXT)
+[18:06:35]   rc=0  OK=4100  FAIL=0
+[18:06:37] build p6cfg
+[18:10:28] correctness p6cfg (full FLASH_ATTN_EXT)
+[18:13:20]   rc=0  OK=4100  FAIL=0
+[18:13:22] build qkv
+[18:14:22] correctness qkv (full FLASH_ATTN_EXT)
+[18:17:24]   rc=0  OK=4202  FAIL=0
+[18:17:27] build conv
+[18:17:52] correctness conv (full FLASH_ATTN_EXT)
+[18:20:56]   rc=0  OK=4202  FAIL=0
+[18:20:58] build conv8
+[18:21:24] correctness conv8 (full FLASH_ATTN_EXT)
+[18:24:27]   rc=0  OK=4202  FAIL=0
+[18:24:27] correctness conv8 (MUL_MAT: non-contiguous quantised conversions)
+[18:25:56]   rc=0  OK=2446  FAIL=0
+[18:25:56] kernel perf upstream round 1  gpu[sm,mem,temp,power,throttle]: 1230 MHz, 877 MHz, 35, 36.42 W, 0x0000000000000000
+[18:32:43] kernel perf fix round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 44, 44.41 W, 0x0000000000000000
+[18:39:29] kernel perf p6 round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.49 W, 0x0000000000000000
+[18:46:16] kernel perf p6cfg round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 44, 44.31 W, 0x0000000000000000
+[18:53:04] kernel perf qkv round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.51 W, 0x0000000000000000
+[18:59:49] kernel perf conv round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.61 W, 0x0000000000000000
+[19:06:35] kernel perf conv8 round 1  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 46, 44.71 W, 0x0000000000000000
+[19:13:20] kernel perf upstream round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.51 W, 0x0000000000000000
+[19:20:05] kernel perf fix round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 46.17 W, 0x0000000000000000
+[19:26:51] kernel perf p6 round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 46.27 W, 0x0000000000000000
+[19:33:35] kernel perf p6cfg round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 44, 44.61 W, 0x0000000000000000
+[19:40:23] kernel perf qkv round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 46.17 W, 0x0000000000000000
+[19:47:09] kernel perf conv round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.41 W, 0x0000000000000000
+[19:53:55] kernel perf conv8 round 2  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 46, 44.90 W, 0x0000000000000000
+[20:00:40] kernel perf upstream round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.51 W, 0x0000000000000000
+[20:07:27] kernel perf fix round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 44, 44.41 W, 0x0000000000000000
+[20:14:12] kernel perf p6 round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 44, 44.41 W, 0x0000000000000000
+[20:20:58] kernel perf p6cfg round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 44, 45.97 W, 0x0000000000000000
+[20:27:43] kernel perf qkv round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 46.17 W, 0x0000000000000000
+[20:34:27] kernel perf conv round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.51 W, 0x0000000000000000
+[20:41:10] kernel perf conv8 round 3  gpu[sm,mem,temp,power,throttle]: 1380 MHz, 877 MHz, 45, 44.51 W, 0x0000000000000000
+[20:47:56] done: /root/volta-fa/bench/results/patches-20261010-173522-9180cf2b1457 (summary.md)

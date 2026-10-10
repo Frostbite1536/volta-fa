@@ -1,0 +1,17 @@
+Qwen3.8-27B-UD-Q4_K_XL.gguf
+   qwen35.block_count [65]
+   qwen35.attention.head_count [24]
+   qwen35.attention.head_count_kv [4]
+   qwen35.attention.layer_norm_rms_epsilon [9.999999974752427e-07]
+   qwen35.attention.key_length [256]
+   qwen35.ssm.conv_kernel [4]
+   qwen35.ssm.state_size [128]
+   qwen35.ssm.group_count [16]
+   qwen35.ssm.time_step_rank [48]
+   qwen35.ssm.inner_size [6144]
+   qwen35.full_attention_interval [4]
+Meta-Llama-3.1-8B-Instruct-Q8_0.gguf
+   llama.block_count [32]
+   llama.attention.head_count [32]
+   llama.attention.head_count_kv [8]
+   llama.attention.layer_norm_rms_epsilon [9.999999747378752e-06]

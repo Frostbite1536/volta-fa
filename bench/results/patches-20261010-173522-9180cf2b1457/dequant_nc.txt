@@ -1,0 +1,9 @@
+device: Tesla V100-PCIE-32GB (sm_70, 80 SMs); one K or V view per call, 50 iterations
+q8_0  test-backend-ops D=64    D= 64 kv=  7680 nh=8 | upstream   110.4 us 109.1 GB/s | 0005 rows/block    29.2 us  3.79x | 0006 vec8    19.0 us  5.80x | f16 D2D copy    22.2 us | outputs bit-identical
+q4_0  test-backend-ops D=64    D= 64 kv=  7680 nh=8 | upstream   110.1 us  91.6 GB/s | 0005 rows/block    27.3 us  4.04x | 0006 vec8    15.9 us  6.92x | f16 D2D copy    22.3 us | outputs bit-identical
+q8_0  Llama-3.1-8B @16K        D=128 kv= 16384 nh=8 | upstream   232.3 us 221.2 GB/s | 0005 rows/block   111.0 us  2.09x | 0006 vec8    75.3 us  3.08x | f16 D2D copy    84.8 us | outputs bit-identical
+q4_0  Llama-3.1-8B @16K        D=128 kv= 16384 nh=8 | upstream   232.2 us 185.1 GB/s | 0005 rows/block   107.3 us  2.16x | 0006 vec8    66.1 us  3.51x | f16 D2D copy    84.8 us | outputs bit-identical
+q8_0  test-backend-ops D=256   D=256 kv= 16384 nh=2 | upstream    63.3 us 405.8 GB/s | 0005 rows/block    55.0 us  1.15x | 0006 vec8    37.9 us  1.67x | f16 D2D copy    43.9 us | outputs bit-identical
+q4_0  test-backend-ops D=256   D=256 kv= 16384 nh=2 | upstream    63.0 us 341.0 GB/s | 0005 rows/block    54.5 us  1.16x | 0006 vec8    33.4 us  1.88x | f16 D2D copy    43.9 us | outputs bit-identical
+q8_0  Qwen3.8-27B @32K         D=256 kv= 32768 nh=4 | upstream   241.5 us 425.5 GB/s | 0005 rows/block   211.9 us  1.14x | 0006 vec8   138.5 us  1.74x | f16 D2D copy   166.7 us | outputs bit-identical
+q4_0  Qwen3.8-27B @32K         D=256 kv= 32768 nh=4 | upstream   239.2 us 359.5 GB/s | 0005 rows/block   207.8 us  1.15x | 0006 vec8   123.7 us  1.93x | f16 D2D copy   166.7 us | outputs bit-identical
