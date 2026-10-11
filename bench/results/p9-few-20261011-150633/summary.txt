@@ -1,0 +1,24 @@
+q8_0.m48.n8.pd2 mmq_volta N 48 K 5120 n 8 NR 2 occ 4 P 10 | kern avg 18.1 us min 16.4 | prep 1.9 | memset 1.0
+q8_0.m48.n8.pd1 mmq_volta N 48 K 5120 n 8 NR 2 occ 4 P 20 | kern avg 13.8 us min 13.0 | prep 1.8 | memset 1.0
+q8_0.m48.n16.pd2 mmq_volta N 48 K 5120 n 16 NR 2 occ 3 P 10 | kern avg 26.2 us min 26.1 | prep 2.0 | memset 1.0
+q8_0.m48.n16.pd1 mmq_volta N 48 K 5120 n 16 NR 2 occ 3 P 20 | kern avg 20.8 us min 20.7 | prep 2.0 | memset 1.0
+q8_0.m4096.n8.pd2 mmq_volta N 4096 K 5120 n 8 NR 2 occ 4 P 5 | kern avg 46.7 us min 44.9 | prep 2.6 | memset 1.1
+q8_0.m4096.n8.pd1 mmq_volta N 4096 K 5120 n 8 NR 2 occ 4 P 5 | kern avg 46.5 us min 44.9 | prep 2.6 | memset 1.1
+q8_0.m4096.n16.pd2 mmq_volta N 4096 K 5120 n 16 NR 4 occ 2 P 5 | kern avg 59.7 us min 57.9 | prep 2.9 | memset 1.1
+q8_0.m4096.n16.pd1 mmq_volta N 4096 K 5120 n 16 NR 4 occ 2 P 5 | kern avg 59.9 us min 57.4 | prep 2.8 | memset 1.1
+q8_0.m17408.n8.pd2 mmq_volta N 17408 K 5120 n 8 NR 2 occ 4 P 1 | kern avg 142.8 us min 139.7 | prep 2.6 | 
+q8_0.m17408.n8.pd1 mmq_volta N 17408 K 5120 n 8 NR 2 occ 4 P 1 | kern avg 142.6 us min 139.6 | prep 2.6 | 
+q8_0.m17408.n16.pd2 mmq_volta N 17408 K 5120 n 16 NR 4 occ 2 P 1 | kern avg 158.9 us min 154.1 | prep 2.9 | 
+q8_0.m17408.n16.pd1 mmq_volta N 17408 K 5120 n 16 NR 4 occ 2 P 1 | kern avg 165.6 us min 160.3 | prep 3.1 | 
+q4_K.m48.n8.pd2 mmq_volta N 48 K 5120 n 8 NR 2 occ 4 P 10 | kern avg 16.0 us min 15.9 | prep 2.0 | memset 1.0
+q4_K.m48.n8.pd1 mmq_volta N 48 K 5120 n 8 NR 2 occ 4 P 20 | kern avg 12.6 us min 12.5 | prep 2.0 | memset 0.8
+q4_K.m48.n16.pd2 mmq_volta N 48 K 5120 n 16 NR 2 occ 4 P 10 | kern avg 25.8 us min 25.7 | prep 2.4 | memset 1.0
+q4_K.m48.n16.pd1 mmq_volta N 48 K 5120 n 16 NR 2 occ 4 P 20 | kern avg 20.9 us min 20.7 | prep 2.3 | memset 1.0
+q4_K.m4096.n8.pd2 mmq_volta N 4096 K 5120 n 8 NR 2 occ 4 P 5 | kern avg 32.9 us min 31.6 | prep 2.9 | memset 1.1
+q4_K.m4096.n8.pd1 mmq_volta N 4096 K 5120 n 8 NR 2 occ 4 P 5 | kern avg 32.8 us min 31.6 | prep 2.9 | memset 1.1
+q4_K.m4096.n16.pd2 mmq_volta N 4096 K 5120 n 16 NR 4 occ 2 P 5 | kern avg 46.3 us min 44.1 | prep 3.3 | memset 1.1
+q4_K.m4096.n16.pd1 mmq_volta N 4096 K 5120 n 16 NR 4 occ 2 P 5 | kern avg 46.1 us min 43.7 | prep 3.3 | memset 1.1
+q4_K.m17408.n8.pd2 mmq_volta N 17408 K 5120 n 8 NR 2 occ 4 P 1 | kern avg 88.3 us min 85.2 | prep 3.2 | 
+q4_K.m17408.n8.pd1 mmq_volta N 17408 K 5120 n 8 NR 2 occ 4 P 1 | kern avg 86.2 us min 83.0 | prep 2.9 | 
+q4_K.m17408.n16.pd2 mmq_volta N 17408 K 5120 n 16 NR 4 occ 2 P 1 | kern avg 106.7 us min 103.3 | prep 3.4 | 
+q4_K.m17408.n16.pd1 mmq_volta N 17408 K 5120 n 16 NR 4 occ 2 P 1 | kern avg 106.9 us min 103.8 | prep 3.4 | 
