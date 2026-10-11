@@ -1,0 +1,11 @@
+0.03.310.806 I cmn          init: llama threadpool init, n_threads = 24
+0.03.540.090 I 
+0.03.540.199 I system_info: n_threads = 24 (n_threads_batch = 24) / 24 | CUDA : ARCHS = 700 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.03.540.357 I perplexity: saving all logits to /root/volta-fa/bench/results/p9-scale2-20261011-195231/Meta-Llama-3.1-8B-Instruct-Q8_0.ref.kld
+0.03.540.364 I perplexity: tokenizing the input ..
+0.03.595.442 I perplexity: tokenization took 55.072 ms
+0.03.595.489 I perplexity: calculating perplexity over 8 chunks, n_ctx=512, batch_size=16, n_seq=1
+0.08.185.404 I perplexity: 4.49 seconds per pass - ETA 0.58 minutes
+[1]9.5714,[2]9.3944,[3]8.3011,[4]7.4132,[5]9.6785,[6]8.6886,[7]8.1525,[8]8.0311,
+0.39.132.806 I Final estimate: PPL = 8.0311 +/- 0.48641
+

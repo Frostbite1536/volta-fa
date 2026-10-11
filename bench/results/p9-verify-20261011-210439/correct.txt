@@ -1,0 +1,4 @@
+MUL_MAT rc=0   2663/2663 tests passed
+MUL_MAT_ID rc=0   931/931 tests passed
+range rc=0   35/35 tests passed
+range current path rc=1   18/35 tests passed

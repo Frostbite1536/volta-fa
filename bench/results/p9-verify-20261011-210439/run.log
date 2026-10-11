@@ -1,0 +1,12 @@
+[21:04:39] apply 135 MHz, 35
+0001-CUDA-Volta-FA-one-heads-per-tile-rule-for-kernel-sel.patch
+0002-CUDA-Volta-FA-pad-non-power-of-two-GQA-ratios-for-sm.patch
+0003-CUDA-Volta-FA-configs-for-D-256-with-ncols-32-and-64.patch
+0004-CUDA-Volta-FA-use-the-vector-kernel-for-single-token.patch
+0005-CUDA-fewer-idle-threads-when-converting-short-non-co.patch
+0006-CUDA-vectorized-dequantization-of-non-contiguous-q4_.patch
+0007-CUDA-FA-vector-kernel-pack-the-Q-heads-of-a-K-V-head.patch
+mmq-volta.cu md5 3ce644740aa4a9164560ffbb8e407970  - expected 3ce644740aa4a9164560ffbb8e407970  -
+[21:04:40] build 135 MHz, 35
+[21:05:29] tests 135 MHz, 35
+[21:09:01] done RESULTS /root/volta-fa/bench/results/p9-verify-20261011-210439 1230 MHz, 37

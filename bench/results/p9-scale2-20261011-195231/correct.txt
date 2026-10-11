@@ -1,0 +1,6 @@
+slice MUL_MAT rc=1   2665/2668 tests passed
+tok MUL_MAT rc=1   2665/2668 tests passed
+old range rc=1   13/40 tests passed
+slice range rc=1   37/40 tests passed
+tok range rc=1   37/40 tests passed
+up range rc=1   20/40 tests passed

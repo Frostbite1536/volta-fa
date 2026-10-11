@@ -1,0 +1,13 @@
+[19:41:41] build new 135 MHz, 34
+[19:42:31] build old 135 MHz, 34
+[19:42:35] correctness 135 MHz, 34
+[19:44:40] perf r1 1230 MHz, 36
+[19:44:43] perf r2 1230 MHz, 36
+[19:44:46] lb Meta-Llama-3.1-8B-Instruct-Q8_0 r1 1230 MHz, 36
+[19:44:57] lb Qwen3.8-27B-UD-Q4_K_XL r1 1380 MHz, 40
+[19:45:20] lb Meta-Llama-3.1-8B-Instruct-Q8_0 r2 1380 MHz, 42
+[19:45:32] lb Qwen3.8-27B-UD-Q4_K_XL r2 1380 MHz, 41
+[19:45:55] kld Meta-Llama-3.1-8B-Instruct-Q8_0 1380 MHz, 43
+[19:46:14] kld Qwen3.8-27B-UD-Q4_K_XL 1380 MHz, 45
+[19:46:59] nsys 1380 MHz, 48
+[19:47:08] done RESULTS /root/volta-fa/bench/results/p9-scale-20261011-194140 1380 MHz, 44

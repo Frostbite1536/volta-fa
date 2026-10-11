@@ -1,0 +1,21 @@
+[19:52:31] build slice 135 MHz, 34
+[19:53:19] build tok 135 MHz, 34
+[19:53:44] build old 135 MHz, 34
+[19:53:47] build ref 135 MHz, 34
+[19:53:51] correctness 135 MHz, 34
+[19:58:01] perf r1 1230 MHz, 36
+[20:16:37] perf r2 1380 MHz, 48
+[20:35:26] perf r3 1380 MHz, 48
+[20:54:11] lb Meta-Llama-3.1-8B-Instruct-Q8_0 r1 1380 MHz, 48
+[20:54:26] lb Qwen3.8-27B-UD-Q4_K_XL r1 1380 MHz, 46
+[20:54:56] lb Meta-Llama-3.1-8B-Instruct-Q8_0 r2 1380 MHz, 44
+[20:55:11] lb Qwen3.8-27B-UD-Q4_K_XL r2 1380 MHz, 43
+[20:55:41] kld Meta-Llama-3.1-8B-Instruct-Q8_0 ref 1380 MHz, 44
+[20:56:31] kld Meta-Llama-3.1-8B-Instruct-Q8_0 old 1380 MHz, 50
+[20:56:41] kld Meta-Llama-3.1-8B-Instruct-Q8_0 slice 1380 MHz, 49
+[20:56:50] kld Meta-Llama-3.1-8B-Instruct-Q8_0 tok 1380 MHz, 49
+[20:57:00] kld Qwen3.8-27B-UD-Q4_K_XL ref 1380 MHz, 48
+[20:59:47] kld Qwen3.8-27B-UD-Q4_K_XL old 1380 MHz, 52
+[21:00:09] kld Qwen3.8-27B-UD-Q4_K_XL slice 1380 MHz, 51
+[21:00:32] kld Qwen3.8-27B-UD-Q4_K_XL tok 1380 MHz, 51
+[21:00:54] done RESULTS /root/volta-fa/bench/results/p9-scale2-20261011-195231 1380 MHz, 50

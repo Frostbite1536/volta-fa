@@ -1,0 +1,77 @@
+From 9c9ce0ac0f13c79aa8e8ac87a75e015f0c61ee0f Mon Sep 17 00:00:00 2001
+From: Frostbite1536 <125112776+Frostbite1536@users.noreply.github.com>
+Date: Sun, 11 Oct 2026 16:03:33 -0500
+Subject: [PATCH] tests: MUL_MAT with activations beyond FP16's range (local
+ only)
+
+Q4_K/Q5_K/Q6_K/IQ4_XS/Q8_0 at 8 and 16 tokens with src1 slices scaled by 1e5 (above 65504) and 1e-5 (subnormal in
+FP16), in three magnitudes per token (x1, /64, /4096 by 256-value slice), to check that the Volta kernel's per-slice
+scaling keeps the FP32 range. Kept out of the upstream series: the current q8_1 paths fail half of these cases
+(block_q8_1 stores its scale and sum in FP16), and the CPU reference fails Q8_0 at 1e-5, so those are skipped here.
+---
+ tests/test-backend-ops.cpp | 42 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index fe2bd7903..6dc7c0996 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -7459,6 +7459,33 @@ struct test_mul_mat_pos : public test_mul_mat {
+     }
+ };
+ 
++// mul_mat with src1 values of very different magnitudes per 256-value slice (x scale, scale/64, scale/4096): beyond the
++// FP16 range for scale = 1e5, in its subnormal range for scale = 1e-5, for kernels that convert activations to FP16
++struct test_mul_mat_range : public test_mul_mat {
++    const float scale;
++
++    test_mul_mat_range(ggml_type type_a, int64_t m, int64_t n, int64_t k, float scale)
++        : test_mul_mat(type_a, GGML_TYPE_F32, m, n, k, {1, 1}, {1, 1}), scale(scale) {}
++
++    std::string vars() override {
++        return test_mul_mat::vars() + ",src1_scale=" + var_to_str(scale);
++    }
++
++    void initialize_tensors(ggml_context * ctx) override {
++        for (ggml_tensor * t = ggml_get_first_tensor(ctx); t != nullptr; t = ggml_get_next_tensor(ctx, t)) {
++            init_tensor_uniform(t);
++            if (t->type == GGML_TYPE_F32) {
++                std::vector<float> v(ggml_nelements(t));
++                ggml_backend_tensor_get(t, v.data(), 0, ggml_nbytes(t));
++                for (size_t i = 0; i < v.size(); ++i) {
++                    v[i] *= scale / float(1 << (6*((i / 256) % 3)));
++                }
++                ggml_backend_tensor_set(t, v.data(), 0, ggml_nbytes(t));
++            }
++        }
++    }
++};
++
+ enum mul_mat_add_mode {
+     MUL_MAT_ADD_MM_RES,     // mm + res
+     MUL_MAT_ADD_RES_MM,     // res + mm
+@@ -10760,6 +10787,21 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+             }
+         }
+     }
++    // activations beyond the FP16 range and in its subnormal range (the Volta kernel scales each 256-value slice).
++    // Not for 1e-5 with Q8_0 (the CPU reference quantizes src1 to q8_0 with an FP16 scale, which underflows) or with
++    // IQ4_XS at m = 128, n = 8 (MMVQ handles that shape, with q8_1 activations)
++    for (ggml_type type_a : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_IQ4_XS, GGML_TYPE_Q8_0, GGML_TYPE_Q6_K }) {
++        for (int n : { 8, 16 }) {
++            for (int m : { 128, 4096 }) {
++                for (float scale : { 1e5f, 1e-5f }) {
++                    if (scale < 1.0f && (type_a == GGML_TYPE_Q8_0 || (type_a == GGML_TYPE_IQ4_XS && m == 128 && n == 8))) {
++                        continue;
++                    }
++                    test_cases.emplace_back(new test_mul_mat_range(type_a, m, n, 1024, scale));
++                }
++            }
++        }
++    }
+ 
+ #if 1
+     for (ggml_type type_a : base_types) {
+-- 
+2.43.0
+

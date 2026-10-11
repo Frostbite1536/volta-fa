@@ -1,11 +1,12 @@
 # P-9 design: small-batch quantised matmul on Volta tensor cores
 
-Status: **Phases 1 and 2 (three parts) done: patch `third_party/patches/0008-*.patch`, harness variant `qmm`**,
+Status: **Phases 1 and 2 (four parts) done: patch `third_party/patches/0008-*.patch`, harness variant `qmm`**,
 measured on a V100 2026-10-11. Q4_K, Q5_K, Q6_K, IQ4_XS and Q8_0 at 5–16 tokens (per-type minimum for N ≥ 4096;
-N ≤ 128 wherever MMQ would run): Qwen3.8-27B +35.4% / +41.8% / +40.9% at 8 / 12 / 16 tokens and Llama-3.1-8B
-+26.8% / +26.3% at 12 / 16 tokens end to end, unchanged at 1–4 tokens; against an FP32 reference 15× (Qwen) and 6×
-(Llama) lower mean KL divergence than the current path; MUL_MAT 2628/2628 on sm_70. Not done: 2–4 tokens, matmul
-pairing, IQ4_NL / Q3_K; the kernel's remaining limit is described in "Phase 2, third part".
+N ≤ 128 wherever MMQ would run), FP16 activations with a power-of-two scale per 256-value slice (D2):
+Qwen3.8-27B +33.8% / +38.8% / +37.9% at 8 / 12 / 16 tokens and Llama-3.1-8B +27.7% / +27.0% at 12 / 16 tokens end
+to end, unchanged at 1–4 tokens; against an FP32 reference 16× (Qwen) and 6× (Llama) lower mean KL divergence than
+the current path; MUL_MAT 2628/2628 on sm_70, plus 35/35 local range tests (`third_party/patches-local/`). Not done:
+2–4 tokens, matmul pairing, IQ4_NL / Q3_K; the kernel's remaining limit is described in "Phase 2, third part".
 Phase 0 data: `bench/results/p9-mmbase-v100-*`, `p9-qload-v100-*`, `p9-qload2-v100-*`.
 Owner decision points are marked **Decision**.
 
@@ -124,6 +125,11 @@ fragment. Use upstream's `mma.cuh` Volta tiles. This is the QPN structure; it is
 fp16 with a power-of-two scale per 256 columns and an fp32 fallback for non-finite slices (needed for the HFMA2
 decode path; q8_1 would need dp4a again). Correctness is judged by `test-backend-ops` MUL_MAT (NMSE against the CPU
 reference, unchanged thresholds) and by perplexity against upstream on both models (Phase 1 exit).
+
+As built: the first three parts converted activations without scaling (as the cuBLAS path for quantised weights
+does), which departed from this decision; the fourth part restores the per-256 scale. There is no FP32 fallback: a
+slice with an infinity is left unscaled and gives non-finite results, as an FP32 computation would, and NaN
+propagates. A graph that asks for F32 or BF16 activations (`ggml_prec_set_src`) is not routed to the kernel.
 
 ### D3. Weight layout (**Decision**, settled by Phase 0 data)
 - **(a) Native GGUF layout.** Each lane reads its own row's blocks. Q4_K (144 B = 9 × 16 B) and Q5_K
@@ -435,10 +441,87 @@ repetition dropped, same binary with `GGML_CUDA_NO_MMQ_VOLTA=1` as the baseline)
 registers; the tested diff is byte-identical to patch 0008. Accuracy was not re-measured: the only routing change is
 the N ≤ 128 rule, which moves matrices to the FP16 path.
 
-**Next**: the kernel structure (above) is the remaining large item (46.2 ms of quantised matmul per Qwen evaluation
+**Next** (still current after the fourth part): the kernel structure (above) is the remaining large item (46.2 ms of quantised matmul per Qwen evaluation
 against the fork's 32.8 ms); it needs the weight-layout mechanism of design option (b), which is an owner decision. Smaller: 2–4 tokens (MMVQ
 610–675 GB/s, this kernel ≈ 480–550), IQ4_NL / Q3_K (1.9 ms per Qwen evaluation on MMQ), pairing matmuls that share
 an input (one prep; the fork's pair kernels), the in-model cost of the N = 48 matrices.
+
+## Phase 2, fourth part (2026-10-11, V100): activation scaling (D2) restored
+
+The first three parts converted activations to FP16 unscaled, against D2: values above 65504 became infinite and
+values below 2^-14 lost precision. The models measured here never got close (the KL divergences above are
+unaffected), but a graph with large activations would have produced infinities where the current path does not.
+
+**What changed.** The prep kernel (one block of 256 threads per superblock and token) finds the largest magnitude
+of its 256 values and scales them by 2^k with k = 141 − (exponent bits of the maximum), so the maximum lands in
+[2^14, 2^15); |k| ≤ 112 keeps 2^k and 2^−k normal; k = 0 for an all-zero or non-finite slice. Multiplying by a power
+of two is exact, so the only rounding left is the FP16 conversion itself, now always in FP16's normal range. 2^−k
+goes to a per-(token, superblock) array; the main kernel stages the T scales of the current superblock in shared
+memory with the means and folds them into the per-row factors (d·s and dmin·s for the K-quants, s for Q8_0, whose
+d is in the A fragment). Cost: T floats of shared memory and one load per thread per superblock for the last T
+threads; registers 167–255, 0 spill, 0 stack for all 15 main-kernel instances, prep 22–25 registers
+(`p9-scale2-*/resources-slice.txt`).
+
+**Alternative measured: one scale per token** (`p9-tok.diff`): the maximum over all of K, undone once at the
+final store, so the main loop is instruction-for-instruction the unscaled one. It is slower, because the prep kernel
+becomes one block per token (8–16 blocks, two passes over K) instead of one per superblock and token. Per matmul
+against the unscaled kernel (minimum of 3 interleaved rounds, all Qwen and Llama shapes with N ≥ 4096, 8 and 16
+tokens, `p9-scale2-*`):
+
+| | Q4_K | Q5_K | Q6_K | IQ4_XS | Q8_0 (16 tokens) |
+| --- | --- | --- | --- | --- | --- |
+| per slice (kept) | 0.97–0.99× | 0.94–1.00× | 0.97–1.00× | 0.94–1.00× | 1.00–1.05× |
+| per token | 0.88–0.96× | 0.89–0.97× | 0.93–0.98× | 0.91–0.97× | 0.96–1.03× |
+
+End to end (llama-bench depth 0, 2 rounds × 5 reps, first repetition dropped, medians; baseline = same binary with
+`GGML_CUDA_NO_MMQ_VOLTA=1`):
+
+| model | 8 tokens | 12 | 16 |
+| --- | --- | --- | --- |
+| Qwen3.8-27B-UD-Q4_K_XL, current path | 133.5 | 157.4 | 206.8 |
+| unscaled (third part) | 180.5 (+35.2%) | 222.9 (+41.7%) | 291.6 (+41.0%) |
+| **per slice (patch 0008)** | **178.6 (+33.8%)** | **218.3 (+38.8%)** | **285.2 (+37.9%)** |
+| per token | 171.8 (+28.7%) | 214.0 (+36.0%) | 279.8 (+35.3%) |
+| Llama-3.1-8B-Q8_0, current path | 468.8 | 474.6 | 623.0 |
+| unscaled | 469.2 | 604.9 (+27.4%) | 789.8 (+26.8%) |
+| **per slice** | **468.8** | **606.2 (+27.7%)** | **791.3 (+27.0%)** |
+| per token | 468.7 | 594.3 (+25.2%) | 776.6 (+24.7%) |
+
+All variants unchanged at 1 and 4 tokens. So the scaling costs Qwen 1–2% of throughput at 8–16 tokens and Llama
+nothing.
+
+**Accuracy** (llama-perplexity KL divergence against the FP32 reference, 4096 tokens at batch 16, current routing):
+
+| model | path | mean KLD | max KLD | same top token |
+| --- | --- | --- | --- | --- |
+| Llama-3.1-8B Q8_0 | current | 0.000301 | 0.0175 | 98.9% |
+| | unscaled | 0.000053 | 0.0039 | 99.6% |
+| | per slice | 0.000053 | 0.0062 | 99.5% |
+| Qwen3.8-27B | current | 0.00170 | 0.43 | 98.2% |
+| | unscaled | 0.000101 | 0.011 | 99.7% |
+| | per slice | 0.000104 | 0.013 | 99.5% |
+
+Per token gives the same mean and maximum KLD as per slice (same top token 99.46% on Llama). The differences to the unscaled kernel are within the error
+bars (±0.000005 Llama, ±0.00001 Qwen).
+
+**Range tests** (`test_mul_mat_range`: 5 types × 8 / 16 tokens × N = 128 / 4096, K = 1024, src1 scaled by 1e5 or
+1e−5 times 1, 1/64 or 1/4096 per 256-value slice):
+
+| | fail at 1e5 | fail at 1e−5 | passed |
+| --- | --- | --- | --- |
+| current path (q8_1 activations) | 8 | 12 | 20/40 |
+| unscaled kernel | 17 | 10 | 13/40 |
+| per slice / per token | 0 | 3 | 37/40 |
+
+The current path's failures come from block_q8_1 storing its scale and block sum in FP16. The 3 left are not the
+kernel's: Q8_0 at 16 tokens and 1e−5 (the CPU reference quantizes src1 to q8_0 with an FP16 scale, which underflows)
+and IQ4_XS at N = 128, 8 tokens (routed to MMVQ). Because the current path fails half of them, these tests are not in
+patch 0008 but in a local patch, `third_party/patches-local/0009-*.patch`, with those cases (and Q8_0 at 1e−5 in
+general) left out: 35 cases.
+
+**Check of the committed series** (`p9-verify-*`: 0001–0007, the regenerated 0008 and 0009 applied to a clean tree;
+mmq-volta.cu byte-identical to the benchmarked one): MUL_MAT 2663/2663 (2628 + 35 range cases), MUL_MAT_ID 931/931,
+range 35/35 (current path 18/35); 0 spill, 0 stack, 0 local memory in every instance.
 
 ## Upstreaming
 

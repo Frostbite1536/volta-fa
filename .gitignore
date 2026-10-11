@@ -46,6 +46,7 @@ CLAUDE.local.md
 third_party/*
 !third_party/.gitkeep
 !third_party/patches/
+!third_party/patches-local/
 
 # Local toolchain (docs/TOOLCHAIN.md)
 .venv/
