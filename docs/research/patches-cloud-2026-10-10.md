@@ -1,5 +1,8 @@
 # Patch series 0001–0006 on a cloud V100 (2026-10-10, session 2)
 
+**Follow-up on the same instance:** `pad-rule-vecpack-v100-2026-10-10.md` (0002 rule revised, Change 4 = 0007;
+Llama-3.1-8B q8_0 tg64 @16K now +26.8%). The tables below are the session 2 state.
+
 Hardware: Vast.ai, **Tesla V100-PCIE-32GB** (same part as session 1 and the home box), 1380 MHz max SM clock,
 250 W, driver 580.173.02, CUDA 12.8.93, Ubuntu 24.04 container, 24 vCPUs. llama.cpp `79e2e74`
 (`bench/LLAMA_COMMIT`), patches as committed in `8533d81`. Single GPU. Clocks held at 1380 MHz, 44–55 °C,

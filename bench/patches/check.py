@@ -152,17 +152,31 @@ def main():
             s = speedup(k, "upstream", "p6cfg", 128, g, 32768, nb, "f16")
             rep.add(f"P-6 (info): GQA {g}, D=128, {nb} tokens, 32K, p6cfg vs upstream",
                     f"{s[0]:.2f}×" if s else "–", "info", "info" if s else "NOT RUN")
-    out = []
+    # "Within noise" guards against regressions: 0003's D=256 configs make GQA 4/8 faster, which is reported but
+    # does not fail the criterion.
+    slower, faster = [], []
     for hs in (128, 256):
         for g in (4, 8):
             for kv in (4096, 32768):
                 for nb in (1, 2, 4, 8, 16):
                     s = speedup(k, "upstream", "p6cfg", hs, g, kv, nb, "f16")
                     if s and not s[1] and abs(s[0] - 1) > NOISE:
-                        out.append(f"D{hs} G{g} kv{kv} nb{nb}: {s[0]:.2f}×")
-    have = any(speedup(k, "upstream", "p6cfg", 128, 4, 4096, 1, "f16") for _ in [0])
-    rep.add("P-6: GQA 4/8 (f16) p6cfg vs upstream within noise", "; ".join(out) or ("all within noise" if have else "–"),
-            "no case outside noise", ("PASS" if not out else "FAIL") if have else "NOT RUN")
+                        (slower if s[0] < 1 else faster).append(f"D{hs} G{g} kv{kv} nb{nb}: {s[0]:.2f}×")
+    have = speedup(k, "upstream", "p6cfg", 128, 4, 4096, 1, "f16") is not None
+    rep.add("P-6: GQA 4/8 (f16) p6cfg not slower than upstream", "; ".join(slower) or ("none slower" if have else "–"),
+            "no case slower beyond noise", ("PASS" if not slower else "FAIL") if have else "NOT RUN")
+    if faster:
+        rep.add("P-6 (info): GQA 4/8 cases faster beyond noise", f"{len(faster)}: " + "; ".join(faster), "info", "info")
+    slower = []
+    for hs in (128, 256):
+        for g in (3, 4, 5, 6, 7, 8):
+            for kv in (4096, 32768):
+                for nb in (1, 2, 4, 8, 16):
+                    s = speedup(k, "upstream", "p6cfg", hs, g, kv, nb, "f16")
+                    if s and not s[1] and s[0] < 1 - NOISE:
+                        slower.append(f"D{hs} G{g} kv{kv} nb{nb}: {s[0]:.2f}×")
+    rep.add("P-6: no f16 shape slower than upstream (GQA 3-8)", "; ".join(slower) or ("none slower" if have else "–"),
+            "no case slower beyond noise", ("PASS" if not slower else "FAIL") if have else "NOT RUN")
     for nb in (16, 4, 2):
         s = speedup(k, "upstream", "p6cfg", 256, 6, 32768, nb, "f16")
         rep.add(f"P-6 decision data: D=256 GQA 6, {nb} tokens, 32K (p6cfg vs upstream)",

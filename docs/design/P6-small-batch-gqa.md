@@ -1,12 +1,14 @@
 # P-6 design: small-batch attention for non-power-of-two GQA on Volta
 
 Status: **implemented as a 3-patch series (`third_party/patches/0001..0003`), measured on a V100
-(`docs/research/patches-cloud-2026-10-10.md`).** 0 new failures; the crash fix holds. D=256: 1.0–3.9× at
-kernel level, never slower (GQA 6, 32K: 2.48× / 3.92× at 8 / 16 tokens); Qwen3.8-27B +7.6% / +19.9% at
-pp8 / pp16 @32K (FA is ~16 of its 65 layers). **Not accepted as is:** D=128 regresses where upstream's
-unpadded tile was already good (GQA 6, 16 tokens: 0.86× at 32K, 0.69× at 4K; GQA 3, 16 tokens, 4K 0.83×;
-GQA 6, 8 tokens, 4K 0.91×). 0002 needs a D=128 rule change (owner decision) and must ship with 0003.
-Owner decision points are marked **Decision**.
+(`docs/research/patches-cloud-2026-10-10.md`), 0002's rule revised and re-measured
+(`docs/research/pad-rule-vecpack-v100-2026-10-10.md`).** 0 new failures (4334/4334 with the full series); the
+crash fix holds. D=256: 1.0–3.9× at kernel level (GQA 6, 32K: 2.48× / 3.92× at 8 / 16 tokens); Qwen3.8-27B
++7.6% / +19.9% at pp8 / pp16 @32K (FA is ~16 of its 65 layers). The session 2 D=128 regressions were a
+parallelism effect at 4 K/V heads (with 8 K/V heads padding wins in every cell, 1.04–3.17×): 0002 now keeps the
+exact 2-head tiles for GQA 6 above 8 tokens at D ≤ 128 with fewer than 8 K/V heads (GQA 6, 16 tokens: 1.00×,
+was 0.69× / 0.86×). Remaining at 4 K/V heads, 4K only: D=128 GQA 3 16 tokens 0.83×, GQA 6 8 tokens 0.91×
+(accepted; same cells gain from 8K up). 0002 must ship with 0003.
 
 ## Problem (measured)
 
@@ -112,10 +114,10 @@ On a V100 (next cloud session or the home box):
 | patch | content | static checks |
 | --- | --- | --- |
 | 0001 | one Volta heads-per-tile helper (`ggml_cuda_fattn_mma_f16_volta_ncols2`) used by kernel selection **and** the Volta dispatch; never dispatch a < 32 column instance on Volta; 9 crash-class tests (GQA 4/6/8, KV 5003, 4–16 tokens) | applies alone; `fattn.cu` compiles alone |
-| 0002 | padded heads per tile for GQA 3/5/6/7 at 3–16 tokens (D ≤ 256); sink guard for masked heads; 96 tests (D 128/256 × GQA 3/5/6/7 × 1–16 tokens × sinks) | full `ggml-cuda` compiles for sm_70 (nvcc 12.8.93, 0 errors); 115 non-D=256 MMA kernels have **identical** registers/stack to upstream (the sink guard is free) |
+| 0002 | padded heads per tile for GQA 3/5/6/7 at 3–16 tokens (D ≤ 256), except GQA 6 above 8 tokens at D ≤ 128 with < 8 K/V heads × sequences (exact `<16,2>` kept; revised 2026-10-11 from V100 sweeps); sink guard for masked heads; 170 tests (D 64/128/256 × GQA 3/5/6/7 × 1–16 tokens × sinks, plus GQA 6 at 12 tokens with 8 K/V heads) | full `ggml-cuda` compiles for sm_70 (nvcc 12.8.93, 0 errors); 115 non-D=256 MMA kernels have **identical** registers/stack to upstream (the sink guard is free) |
 | 0003 | Volta rows `GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, {32,64}, 128, 2, 32, 64, 64, 64, 2, false)` | D=256 `<4,8>` stack 448 → 64 B (32 columns); ncols=64 row is the measured `pr_k64_c64` (2.3–2.65×) |
 
-Routes after 0001+0002 (traced against the compiled instance set): GQA 5/6/7 → VEC at 1 token, TILE at 2 (both
+Routes after 0001+0002 as first written (traced against the compiled instance set; since revised: GQA 6 at 9–16 tokens, D ≤ 128, < 8 K/V heads keeps upstream's `<16,2>`): GQA 5/6/7 → VEC at 1 token, TILE at 2 (both
 unchanged), MMA `<4,8>` at 3–4 tokens, `<8,8>` at 5–16; GQA 3 → `<8,4>`/`<16,4>` from 5 tokens; GQA 4/8
 unchanged; GQA optimisation off → TILE for ≤ 16 tokens (was: illegal 16-column MMA).
 

@@ -1,17 +1,21 @@
-From c9c7540606106ff6f17f336ba1b7c595aca04bd7 Mon Sep 17 00:00:00 2001
+From 281f03e369b43a07c31754c6a6121b2cc2734e1a Mon Sep 17 00:00:00 2001
 From: volta-fa <volta-fa@localhost>
 Date: Sat, 10 Oct 2026 08:14:42 -0500
-Subject: [PATCH 2/3] CUDA: Volta FA, pad non-power-of-two GQA ratios for small
+Subject: [PATCH 2/7] CUDA: Volta FA, pad non-power-of-two GQA ratios for small
  batches
 
 For GQA 3/5/6/7 and 3-16 query tokens, pack the Q heads of a K/V head into one MMA tile
 padded to the next power of two (masked heads), so K/V is streamed once instead of once
 per 2-head group. Guard the sink read for masked heads.
+
+Exception: for head sizes <= 128 with fewer than 8 K/V heads, GQA 6 above 8 tokens keeps
+the exact 2-head MMA tiles. Padding there leaves a third as many tiles, too few blocks to
+fill the GPU; with 8 or more K/V heads padding is faster again.
 ---
  ggml/src/ggml-cuda/fattn-mma-f16.cuh |  5 ++++-
- ggml/src/ggml-cuda/fattn.cu          |  7 +++++++
- tests/test-backend-ops.cpp           | 11 +++++++++++
- 3 files changed, 22 insertions(+), 1 deletion(-)
+ ggml/src/ggml-cuda/fattn.cu          | 20 +++++++++++++++++---
+ tests/test-backend-ops.cpp           | 16 ++++++++++++++++
+ 3 files changed, 37 insertions(+), 4 deletions(-)
 
 diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
 index 7f0f6abfd..f882e28d5 100644
@@ -30,48 +34,80 @@ index 7f0f6abfd..f882e28d5 100644
              const float KQ_max_new = fmaxf(KQ_max[col], sink);
              const float KQ_max_diff = KQ_max[col] - KQ_max_new;
 diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
-index 9187e674f..48ed116e1 100644
+index 9187e674f..5263f8766 100644
 --- a/ggml/src/ggml-cuda/fattn.cu
 +++ b/ggml/src/ggml-cuda/fattn.cu
-@@ -194,6 +194,9 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+@@ -194,7 +194,11 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
  // Q heads per MMA tile (ncols2) on Volta. Kernel selection and the Volta dispatch below must agree on this value:
  // selection decides VEC/TILE/MMA from n_q*ncols2, and Volta MMA instances need ncols1*ncols2 >= 32.
  // Without the GQA optimization every Q head is its own tile (ncols2 = 1).
+-static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_ratio, const bool gqa_opt, const int64_t n_q) {
 +// For a non-power-of-two GQA ratio (3, 5, 6, 7) and a small batch, the ratio is padded to the next power of two:
 +// the kernel masks the extra heads, and each K/V head is then streamed once instead of once per 2-head group.
 +// Large batches keep exact divisors, where padding would waste tensor core columns without saving K/V reads.
- static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_ratio, const bool gqa_opt, const int64_t n_q) {
++static int ggml_cuda_fattn_mma_f16_volta_ncols2(
++        const int DKQ, const int gqa_ratio, const bool gqa_opt, const int64_t n_q, const int64_t n_kv_heads) {
      if (!gqa_opt) {
          return 1;
-@@ -204,6 +207,10 @@ static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_rat
+     }
+@@ -204,6 +208,15 @@ static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_rat
      if (gqa_ratio % 4 == 0) {
          return 4;
      }
 +    const bool gqa_pow2 = (gqa_ratio & (gqa_ratio - 1)) == 0;
-+    if (!gqa_pow2 && gqa_ratio < 8 && DKQ <= 256 && n_q >= 3 && n_q <= 16) {
++    // Exception: where the exact divisor already reaches MMA (GQA 6 above 8 tokens), padding leaves a third as many
++    // tiles. For DKQ <= 128 with few K/V heads that is too few blocks to fill the GPU and the exact tiles are faster;
++    // with 8 or more K/V heads padding is faster again.
++    const int  ncols2_exact   = gqa_ratio % 2 == 0 ? 2 : 1;
++    const bool keep_exact_mma = DKQ <= 128 && n_q*ncols2_exact > 16 && n_kv_heads < 8;
++    if (!gqa_pow2 && gqa_ratio < 8 && DKQ <= 256 && n_q >= 3 && n_q <= 16 && !keep_exact_mma) {
 +        return gqa_ratio > 4 ? 8 : 4;
 +    }
      if (DKQ <= 256 && gqa_ratio % 2 == 0) {
          return 2;
      }
+@@ -242,7 +255,7 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+ 
+     // On Volta the GQA optimizations aren't as impactful vs. minimizing wasted compute:
+     if (cc == GGML_CUDA_CC_VOLTA) {
+-        switch (ggml_cuda_fattn_mma_f16_volta_ncols2(DKQ, gqa_ratio, use_gqa_opt, Q->ne[1])) {
++        switch (ggml_cuda_fattn_mma_f16_volta_ncols2(DKQ, gqa_ratio, use_gqa_opt, Q->ne[1], K->ne[2]*K->ne[3])) {
+             case 8:
+                 ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
+                 return;
+@@ -695,7 +708,8 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+         // Must match the Volta branch of ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2: it uses ncols2 = 1 when
+         // the GQA optimization does not apply, and a larger value here would select MMA for a batch that the
+         // dispatch then has to run as a < 32 column instance, which Volta does not compile.
+-        const int volta_ncols2 = ggml_cuda_fattn_mma_f16_volta_ncols2(Q->ne[0], gqa_ratio, gqa_opt_applies, Q->ne[1]);
++        const int volta_ncols2 = ggml_cuda_fattn_mma_f16_volta_ncols2(
++            Q->ne[0], gqa_ratio, gqa_opt_applies, Q->ne[1], K->ne[2]*K->ne[3]);
+         if (can_use_vector_kernel && Q->ne[1] * volta_ncols2 <= 2) {
+             return BEST_FATTN_KERNEL_VEC;
+         }
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 05b687558..bd4f398a6 100644
+index 05b687558..8477a9738 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -11695,6 +11695,17 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -11695,6 +11695,22 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      // KV not a multiple of the compaction workgroup size.
      test_cases.emplace_back(new test_flash_attn_ext(128, 128, 1, { 8, 1}, 5003, 4, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false,  512));
  
 +    // Non-power-of-two GQA ratios at small batch sizes: on Volta the MMA kernel pads the Q heads per tile
-+    // to the next power of two and masks the extra heads (including their attention sinks).
-+    for (int hs : { 128, 256 }) {
++    // to the next power of two and masks the extra heads (including their attention sinks). 12 tokens: with these
++    // 2 K/V heads, GQA 6 at DKQ <= 128 keeps the exact 2-head tiles there; it pads at 8 tokens.
++    for (int hs : { 64, 128, 256 }) {
 +        for (int gqa : { 3, 5, 6, 7 }) {
-+            for (int nb : { 1, 2, 3, 4, 8, 16 }) {
++            for (int nb : { 1, 2, 3, 4, 8, 12, 16 }) {
 +                for (bool sinks : { false, true }) {
 +                    test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 4096, nb, true, sinks, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
 +                }
 +            }
 +        }
++    }
++    // GQA 6 above 8 tokens with 8 K/V heads: padded (the exact tiles are kept only for fewer K/V heads).
++    for (int hs : { 64, 128 }) {
++        test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 8, {6, 1}, 4096, 12, true, true, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
 +    }
      // GQA optimization disabled (KV length not a multiple of FATTN_KQ_STRIDE) at small batch sizes.
      for (int gqa : { 4, 6, 8 }) {

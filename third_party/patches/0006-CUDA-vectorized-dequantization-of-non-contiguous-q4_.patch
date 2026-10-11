@@ -1,7 +1,7 @@
-From 7310054962fad78ad0d27ad9c8571e343d1d7dd4 Mon Sep 17 00:00:00 2001
+From e30afcc52c6ae5a9c69bc68217209c01b89cc2e4 Mon Sep 17 00:00:00 2001
 From: Frostbite1536 <125112776+Frostbite1536@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 11:39:30 -0500
-Subject: [PATCH 6/6] CUDA: vectorized dequantization of non-contiguous
+Subject: [PATCH 6/7] CUDA: vectorized dequantization of non-contiguous
  q4_0/q8_0 rows
 
 The generic dequantize_block moves 1-2 bytes per load and 2 values per thread. For the

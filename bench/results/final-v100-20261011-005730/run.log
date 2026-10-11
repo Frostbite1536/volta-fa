@@ -1,0 +1,29 @@
+3
+[00:57:30] build 135 MHz, 34, 24.07 W
+[00:58:22] correctness FA 135 MHz, 34, 23.97 W
+[01:01:33] FA rc=0 1230 MHz, 36, 36.81 W
+[01:01:33] perf f16 upstream r1 1230 MHz, 36, 36.81 W
+[01:05:44] perf f16 final r1 1380 MHz, 46, 44.51 W
+[01:09:55] perf q unpacked r1 1380 MHz, 47, 45.18 W
+[01:13:04] perf q final r1 1380 MHz, 48, 45.22 W
+[01:16:31] perf f16 upstream r2 1380 MHz, 49, 45.17 W
+[01:20:42] perf f16 final r2 1380 MHz, 46, 44.78 W
+[01:24:53] perf q unpacked r2 1380 MHz, 47, 44.98 W
+[01:27:58] perf q final r2 1380 MHz, 48, 47.61 W
+[01:31:25] llama-bench llama8b kv=q8_0 upstream r1 1380 MHz, 49, 45.78 W
+[01:31:40] llama-bench llama8b kv=q8_0 final r1 1380 MHz, 49, 45.76 W
+[01:31:55] llama-bench llama8b kv=q4_0 upstream r1 1380 MHz, 50, 46.05 W
+[01:32:10] llama-bench llama8b kv=q4_0 final r1 1380 MHz, 51, 45.66 W
+[01:32:24] llama-bench llama8b kv=f16 upstream r1 1380 MHz, 52, 46.47 W
+[01:32:40] llama-bench llama8b kv=f16 final r1 1380 MHz, 51, 46.17 W
+[01:32:55] llama-bench qwen27b kv=q8_0 upstream r1 1380 MHz, 51, 46.25 W
+[01:33:30] llama-bench qwen27b kv=q8_0 final r1 1380 MHz, 55, 49.93 W
+[01:34:04] llama-bench llama8b kv=q8_0 upstream r2 1380 MHz, 57, 51.67 W
+[01:34:19] llama-bench llama8b kv=q8_0 final r2 1380 MHz, 54, 47.22 W
+[01:34:33] llama-bench llama8b kv=q4_0 upstream r2 1380 MHz, 53, 47.03 W
+[01:34:49] llama-bench llama8b kv=q4_0 final r2 1380 MHz, 53, 46.46 W
+[01:35:02] llama-bench llama8b kv=f16 upstream r2 1380 MHz, 53, 47.13 W
+[01:35:18] llama-bench llama8b kv=f16 final r2 1380 MHz, 52, 46.06 W
+[01:35:33] llama-bench qwen27b kv=q8_0 upstream r2 1380 MHz, 51, 46.34 W
+[01:36:08] llama-bench qwen27b kv=q8_0 final r2 1380 MHz, 55, 51.21 W
+[01:36:41] done 1380 MHz, 56, 51.69 W

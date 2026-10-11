@@ -1,7 +1,7 @@
-From 2479b55b24980ebcf35ee52b52d8ff81921b627c Mon Sep 17 00:00:00 2001
+From 7ce82f313aa3c5ad8fe689042ba912510b60d9b6 Mon Sep 17 00:00:00 2001
 From: volta-fa <volta-fa@localhost>
 Date: Sat, 10 Oct 2026 08:14:42 -0500
-Subject: [PATCH 3/3] CUDA: Volta FA configs for D=256 with ncols 32 and 64
+Subject: [PATCH 3/7] CUDA: Volta FA configs for D=256 with ncols 32 and 64
 
 Keep Q in shared memory and halve nbatch_K2/nbatch_combine: no register spills and
 2 blocks/SM instead of 1 (the Ampere fallback spills 432-640 B per thread).

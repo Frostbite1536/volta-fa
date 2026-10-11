@@ -1,7 +1,7 @@
-From 5fa315579fe1933a1bdddeefdee437f781346401 Mon Sep 17 00:00:00 2001
+From c4395ee9076658dd21c4649ee0d863c760bb40bb Mon Sep 17 00:00:00 2001
 From: Frostbite1536 <125112776+Frostbite1536@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 11:33:48 -0500
-Subject: [PATCH 5/6] CUDA: fewer idle threads when converting short
+Subject: [PATCH 5/7] CUDA: fewer idle threads when converting short
  non-contiguous rows
 
 dequantize_block_cuda (2 values per thread) and convert_unary_cuda (1 per thread) used

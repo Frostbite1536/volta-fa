@@ -1,0 +1,660 @@
+diff --git a/ggml/src/ggml-cuda/convert.cu b/ggml/src/ggml-cuda/convert.cu
+index 77fd28894..79408e6dc 100644
+--- a/ggml/src/ggml-cuda/convert.cu
++++ b/ggml/src/ggml-cuda/convert.cu
+@@ -16,7 +16,7 @@ static __global__ void dequantize_block(const void * __restrict__ vx, dst_t * __
+         return;
+     }
+ 
+-    for (int64_t i01 = blockIdx.y; i01 < ne01; i01 += gridDim.y) {
++    for (int64_t i01 = int64_t(blockIdx.y)*blockDim.y + threadIdx.y; i01 < ne01; i01 += int64_t(gridDim.y)*blockDim.y) {
+         for (int64_t i0203 = blockIdx.z; i0203 < ne0203; i0203 += gridDim.z) {
+             const uint2 dm = fast_div_modulo((uint32_t)i0203, ne02);
+             const int64_t i02 = dm.y;
+@@ -254,8 +254,15 @@ static void dequantize_block_cuda(const void * vx, dst_t * y,
+         const int64_t s01, const int64_t s02, const int64_t s03, cudaStream_t stream) {
+     const int64_t ne0203 = ne02*ne03;
+     const uint3 ne02_fdv = init_fastdiv_values(ne02);
+-    const dim3 num_blocks((ne00 + 2*CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / (2*CUDA_DEQUANTIZE_BLOCK_SIZE), (int)std::min(ne01, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
+-    dequantize_block<qk, qr, dequantize_kernel><<<num_blocks, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>
++    // Short rows (e.g. a K/V cache view, one row per token and head) would leave most threads of a block idle
++    // and launch one block per row: use only as many threads per row as needed and put several rows in a block.
++    int nth_x = WARP_SIZE;
++    while (nth_x < CUDA_DEQUANTIZE_BLOCK_SIZE && 2*nth_x < ne00) {
++        nth_x *= 2;
++    }
++    const int nth_y = CUDA_DEQUANTIZE_BLOCK_SIZE / nth_x;
++    const dim3 num_blocks((ne00 + 2*nth_x - 1) / (2*nth_x), (int)std::min((ne01 + nth_y - 1) / nth_y, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
++    dequantize_block<qk, qr, dequantize_kernel><<<num_blocks, dim3(nth_x, nth_y, 1), 0, stream>>>
+         (vx, y, ne00, ne01, ne0203, ne02_fdv, s01, s02, s03);
+ }
+ 
+@@ -264,6 +271,78 @@ static void dequantize_block_cont_cuda(const void * __restrict__ vx, dst_t * __r
+     dequantize_block_cuda<qk, qr, dequantize_kernel, dst_t>(vx, y, k, 1, 1, 1, k/qk, k/qk, k/qk, stream);
+ }
+ 
++// q4_0/q8_0 rows of a non-contiguous tensor (e.g. the K/V cache views that FlashAttention converts to F16),
++// 8 values per thread: dequantize_block moves 1-2 bytes per load and 2 values per thread, far below memory
++// bandwidth. Same arithmetic as dequantize_q4_0/q8_0, so the results are identical.
++template <ggml_type type, typename dst_t>
++static __global__ void dequantize_block_q_0_nc(const void * __restrict__ vx, dst_t * __restrict__ y,
++        const int ne00, const int ne01, const int64_t ne0203, const uint3 ne02,
++        const int64_t s01, const int64_t s02, const int64_t s03) {
++    static_assert(type == GGML_TYPE_Q4_0 || type == GGML_TYPE_Q8_0, "bad type");
++    static_assert(QK4_0 == 32 && QK8_0 == 32, "bad block size");
++    const int nth_row = ne00/8;
++    const int i = blockIdx.x*blockDim.x + threadIdx.x;
++    if (i >= ne01*nth_row) {
++        return;
++    }
++    const int i01 = i / nth_row;
++    const int i00 = 8*(i - i01*nth_row); // first of this thread's 8 values in the row
++    const int iqs = i00 % 32;            // ... and in its quant block
++
++    for (int64_t i0203 = blockIdx.y; i0203 < ne0203; i0203 += gridDim.y) {
++        const uint2 dm = fast_div_modulo((uint32_t)i0203, ne02);
++        const int64_t ib = dm.x*s03 + dm.y*s02 + i01*s01 + i00/32;
++        dst_t * yb = y + (i0203*ne01 + i01)*ne00 + (i00 - iqs); // the 32 values of this quant block
++
++        if constexpr (type == GGML_TYPE_Q8_0) {
++            const block_q8_0 * x = (const block_q8_0 *) vx + ib;
++            const float d = x->d;
++            int8_t q[8];
++            ggml_cuda_memcpy_1<8, 2>(q, x->qs + iqs); // quant blocks are only 2-byte aligned
++            alignas(16) dst_t v[8];
++#pragma unroll
++            for (int k = 0; k < 8; ++k) {
++                v[k] = ggml_cuda_cast<dst_t>(float(q[k])*d);
++            }
++            constexpr int ne_cpy = 16/sizeof(dst_t) < 8 ? 16/sizeof(dst_t) : 8; // values per 16-byte store
++#pragma unroll
++            for (int k = 0; k < 8; k += ne_cpy) {
++                ggml_cuda_memcpy_1<ne_cpy*sizeof(dst_t)>(yb + iqs + k, v + k);
++            }
++        } else {
++            const block_q4_0 * x = (const block_q4_0 *) vx + ib;
++            const float d = x->d;
++            uint8_t q[4];
++            ggml_cuda_memcpy_1<4, 2>(q, x->qs + iqs/2); // bytes iqs/2.. hold values iqs/2.. (low) and 16+iqs/2.. (high)
++            alignas(16) dst_t lo[4];
++            alignas(16) dst_t hi[4];
++#pragma unroll
++            for (int k = 0; k < 4; ++k) {
++                lo[k] = ggml_cuda_cast<dst_t>((float(q[k] & 0xF) - 8.0f)*d);
++                hi[k] = ggml_cuda_cast<dst_t>((float(q[k] >>  4) - 8.0f)*d);
++            }
++            ggml_cuda_memcpy_1<4*sizeof(dst_t)>(yb +      iqs/2, lo);
++            ggml_cuda_memcpy_1<4*sizeof(dst_t)>(yb + 16 + iqs/2, hi);
++        }
++    }
++}
++
++template <ggml_type type, int qk, int qr, dequantize_kernel_t dequantize_kernel, typename dst_t>
++static void dequantize_block_q_0_nc_cuda(const void * vx, dst_t * y,
++        const int64_t ne00, const int64_t ne01, const int64_t ne02, const int64_t ne03,
++        const int64_t s01, const int64_t s02, const int64_t s03, cudaStream_t stream) {
++    const int64_t nth_plane = ne01*(ne00/8);
++    if (ne00 % qk != 0 || nth_plane > int64_t(INT_MAX)) {
++        dequantize_block_cuda<qk, qr, dequantize_kernel>(vx, y, ne00, ne01, ne02, ne03, s01, s02, s03, stream);
++        return;
++    }
++    const int64_t ne0203 = ne02*ne03;
++    const uint3 ne02_fdv = init_fastdiv_values(ne02);
++    const dim3 num_blocks((nth_plane + CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / CUDA_DEQUANTIZE_BLOCK_SIZE, (int)std::min(ne0203, (int64_t)65535), 1);
++    dequantize_block_q_0_nc<type><<<num_blocks, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>
++        (vx, y, ne00, ne01, ne0203, ne02_fdv, s01, s02, s03);
++}
++
+ static void dequantize_block_q8_0_f16_cuda(const void * __restrict__ vx, half * __restrict__ y, const int64_t k, cudaStream_t stream) {
+     const int num_blocks = (k + CUDA_Q8_0_NE_ALIGN - 1) / CUDA_Q8_0_NE_ALIGN;
+     if (k % CUDA_Q8_0_NE_ALIGN == 0) {
+@@ -432,7 +511,7 @@ static __global__ void convert_unary(
+ 
+     const src_t * x = (const src_t *) vx;
+ 
+-    for (int64_t i01 = blockIdx.y; i01 < ne01; i01 += gridDim.y) {
++    for (int64_t i01 = int64_t(blockIdx.y)*blockDim.y + threadIdx.y; i01 < ne01; i01 += int64_t(gridDim.y)*blockDim.y) {
+         for (int64_t i0203 = blockIdx.z; i0203 < ne0203; i0203 += gridDim.z) {
+             const uint2 dm = fast_div_modulo((uint32_t)i0203, ne02);
+             const int64_t i02 = dm.y;
+@@ -474,8 +553,14 @@ static void convert_unary_cuda(const void * vx, dst_t * y,
+         const int64_t s01, const int64_t s02, const int64_t s03, cudaStream_t stream) {
+     const int64_t ne0203 = ne02*ne03;
+     const uint3 ne02_fdv = init_fastdiv_values(ne02);
+-    const dim3 num_blocks((ne00 + CUDA_DEQUANTIZE_BLOCK_SIZE - 1) / CUDA_DEQUANTIZE_BLOCK_SIZE, (int)std::min(ne01, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
+-    convert_unary<src_t><<<num_blocks, CUDA_DEQUANTIZE_BLOCK_SIZE, 0, stream>>>
++    // Several short rows per block, as in dequantize_block_cuda.
++    int nth_x = WARP_SIZE;
++    while (nth_x < CUDA_DEQUANTIZE_BLOCK_SIZE && nth_x < ne00) {
++        nth_x *= 2;
++    }
++    const int nth_y = CUDA_DEQUANTIZE_BLOCK_SIZE / nth_x;
++    const dim3 num_blocks((ne00 + nth_x - 1) / nth_x, (int)std::min((ne01 + nth_y - 1) / nth_y, (int64_t)65535), (int)std::min(ne0203, (int64_t)65535));
++    convert_unary<src_t><<<num_blocks, dim3(nth_x, nth_y, 1), 0, stream>>>
+         (vx, y, ne00, ne01, ne0203, ne02_fdv, s01, s02, s03);
+ }
+ 
+@@ -676,7 +761,7 @@ to_fp16_nc_cuda_t ggml_get_to_fp16_nc_cuda(ggml_type type) {
+         case GGML_TYPE_Q2_0:
+             return dequantize_block_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+         case GGML_TYPE_Q4_0:
+-            return dequantize_block_cuda<QK4_0, QR4_0, dequantize_q4_0>;
++            return dequantize_block_q_0_nc_cuda<GGML_TYPE_Q4_0, QK4_0, QR4_0, dequantize_q4_0>;
+         case GGML_TYPE_Q4_1:
+             return dequantize_block_cuda<QK4_1, QR4_1, dequantize_q4_1>;
+         case GGML_TYPE_Q5_0:
+@@ -684,7 +769,7 @@ to_fp16_nc_cuda_t ggml_get_to_fp16_nc_cuda(ggml_type type) {
+         case GGML_TYPE_Q5_1:
+             return dequantize_block_cuda<QK5_1, QR5_1, dequantize_q5_1>;
+         case GGML_TYPE_Q8_0:
+-            return dequantize_block_cuda<QK8_0, QR8_0, dequantize_q8_0>;
++            return dequantize_block_q_0_nc_cuda<GGML_TYPE_Q8_0, QK8_0, QR8_0, dequantize_q8_0>;
+         case GGML_TYPE_BF16:
+             return convert_unary_cuda<nv_bfloat16>;
+         default:
+@@ -701,7 +786,7 @@ to_bf16_nc_cuda_t ggml_get_to_bf16_nc_cuda(ggml_type type) {
+         case GGML_TYPE_Q2_0:
+             return dequantize_block_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+         case GGML_TYPE_Q4_0:
+-            return dequantize_block_cuda<QK4_0, QR4_0, dequantize_q4_0>;
++            return dequantize_block_q_0_nc_cuda<GGML_TYPE_Q4_0, QK4_0, QR4_0, dequantize_q4_0>;
+         case GGML_TYPE_Q4_1:
+             return dequantize_block_cuda<QK4_1, QR4_1, dequantize_q4_1>;
+         case GGML_TYPE_Q5_0:
+@@ -709,7 +794,7 @@ to_bf16_nc_cuda_t ggml_get_to_bf16_nc_cuda(ggml_type type) {
+         case GGML_TYPE_Q5_1:
+             return dequantize_block_cuda<QK5_1, QR5_1, dequantize_q5_1>;
+         case GGML_TYPE_Q8_0:
+-            return dequantize_block_cuda<QK8_0, QR8_0, dequantize_q8_0>;
++            return dequantize_block_q_0_nc_cuda<GGML_TYPE_Q8_0, QK8_0, QR8_0, dequantize_q8_0>;
+         case GGML_TYPE_F16:
+             return convert_unary_cuda<half, nv_bfloat16>;
+         default:
+@@ -726,7 +811,7 @@ to_fp32_nc_cuda_t ggml_get_to_fp32_nc_cuda(ggml_type type) {
+         case GGML_TYPE_Q2_0:
+             return dequantize_block_cuda<QK2_0, QR2_0, dequantize_q2_0>;
+         case GGML_TYPE_Q4_0:
+-            return dequantize_block_cuda<QK4_0, QR4_0, dequantize_q4_0>;
++            return dequantize_block_q_0_nc_cuda<GGML_TYPE_Q4_0, QK4_0, QR4_0, dequantize_q4_0>;
+         case GGML_TYPE_Q4_1:
+             return dequantize_block_cuda<QK4_1, QR4_1, dequantize_q4_1>;
+         case GGML_TYPE_Q5_0:
+@@ -734,7 +819,7 @@ to_fp32_nc_cuda_t ggml_get_to_fp32_nc_cuda(ggml_type type) {
+         case GGML_TYPE_Q5_1:
+             return dequantize_block_cuda<QK5_1, QR5_1, dequantize_q5_1>;
+         case GGML_TYPE_Q8_0:
+-            return dequantize_block_cuda<QK8_0, QR8_0, dequantize_q8_0>;
++            return dequantize_block_q_0_nc_cuda<GGML_TYPE_Q8_0, QK8_0, QR8_0, dequantize_q8_0>;
+         case GGML_TYPE_BF16:
+             return convert_unary_cuda<nv_bfloat16, float>;
+         default:
+diff --git a/ggml/src/ggml-cuda/fattn-mma-f16.cuh b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+index 7f0f6abfd..ce50c1eba 100644
+--- a/ggml/src/ggml-cuda/fattn-mma-f16.cuh
++++ b/ggml/src/ggml-cuda/fattn-mma-f16.cuh
+@@ -123,6 +123,9 @@ static constexpr __host__ __device__ fattn_mma_config ggml_cuda_fattn_mma_get_co
+     GGML_CUDA_FATTN_MMA_CONFIG_CASE(576, 512, 32, 128, 2,  32, 160, 128,  64, 1, false);
+     GGML_CUDA_FATTN_MMA_CONFIG_CASE(576, 512, 64, 256, 1,  32, 160, 128,  64, 1, false);
+ 
++    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 32, 128, 2,  32,  64,  64,  64, 2, false);
++    GGML_CUDA_FATTN_MMA_CONFIG_CASE(256, 256, 64, 128, 2,  32,  64,  64,  64, 2, false);
++
+     // TODO tune specifically for Volta
+     return ggml_cuda_fattn_mma_get_config_ampere(DKQ, DV, ncols);
+ }
+@@ -1431,7 +1434,10 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
+ #pragma unroll
+         for (int col = 0; col < cols_per_thread; ++col) {
+             const int jc = (threadIdx.y/np)*cols_per_warp + (cols_per_warp == 8 ? T_C_KQ::get_j(col) : T_C_KQ::get_i(2*col));
+-            const float sink = sinks_f[jc % ncols2];
++            // Padded Q heads (zt_gqa*ncols2 + c >= gqa_ratio) are masked: do not read their sink, it would belong to
++            // the next K/V head or lie past the end of the sinks array.
++            const int   c_sink = jc % ncols2;
++            const float sink   = ncols2 == 1 || zt_gqa*ncols2 + c_sink < gqa_ratio ? sinks_f[c_sink] : -INFINITY;
+ 
+             const float KQ_max_new = fmaxf(KQ_max[col], sink);
+             const float KQ_max_diff = KQ_max[col] - KQ_max_new;
+diff --git a/ggml/src/ggml-cuda/fattn-vec.cuh b/ggml/src/ggml-cuda/fattn-vec.cuh
+index 57a285565..86a987d2e 100644
+--- a/ggml/src/ggml-cuda/fattn-vec.cuh
++++ b/ggml/src/ggml-cuda/fattn-vec.cuh
+@@ -16,7 +16,8 @@ static constexpr __device__ int ggml_cuda_fattn_vec_get_nthreads_device() {
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wpass-failed"
+ #endif // __clang__
+-template<int D, int ncols, ggml_type type_K, ggml_type type_V, bool use_logit_softcap> // D == head size
++// D == head size. A block works on ncols1 tokens x ncols2 Q heads that share one K/V head (padded heads masked).
++template<int D, int ncols1, int ncols2, ggml_type type_K, ggml_type type_V, bool use_logit_softcap>
+ __launch_bounds__(ggml_cuda_fattn_vec_get_nthreads_device(), 1)
+ static __global__ void flash_attn_ext_vec(
+         const char * Q_ptr,
+@@ -68,6 +69,8 @@ static __global__ void flash_attn_ext_vec(
+ 
+     //In this kernel Q, K, V are matrices while i, j, k are matrix indices.
+ 
++    constexpr int ncols = ncols1*ncols2; // Q columns per block; column jc = token jc/ncols2, Q head jc%ncols2.
++
+     constexpr int cpy_nb = ggml_cuda_get_max_cpy_bytes();
+     constexpr int cpy_ne = cpy_nb / 4;
+ 
+@@ -92,6 +95,10 @@ static __global__ void flash_attn_ext_vec(
+ 
+     constexpr int V_rows_per_thread = (type_V == GGML_TYPE_F16 || type_V == GGML_TYPE_BF16) ? 2*cpy_ne : 4;
+     constexpr int V_cols_per_iter   = WARP_SIZE / nthreads_V;
++    // Packed Q heads multiply the per-key state: without unrolling the key loops the packed kernels need
++    // 80-190 registers with no local memory on sm_70; fully unrolled they spill.
++    constexpr int unroll_KQ = ncols2 == 1 ? nthreads_KQ : 1;
++    constexpr int unroll_V  = ncols2 == 1 ? WARP_SIZE/V_cols_per_iter : 1;
+ 
+     constexpr vec_dot_KQ_t vec_dot_KQ = get_vec_dot_KQ<type_K, D, nthreads_KQ>();
+     constexpr bool Q_q8_1 = type_K != GGML_TYPE_F16 && type_K != GGML_TYPE_BF16;
+@@ -101,25 +108,37 @@ static __global__ void flash_attn_ext_vec(
+     constexpr dequantize_V_t dequantize_V = get_dequantize_V<type_V, float, V_rows_per_thread>();
+ #endif // V_DOT2_F32_F16_AVAILABLE
+ 
+-    const int ic0 = blockIdx.x * ncols; // Index of the Q/QKV column to work on.
++    const int ic0 = blockIdx.x * ncols1; // Index of the first Q/QKV column (token) to work on.
+ 
+-    const int sequence = blockIdx.z / ne02;
+-    const int head = blockIdx.z - sequence*ne02;
+-    const int gqa_ratio = ne02 / ne12; // With grouped query attention there are > 1 Q matrices per K, V matrix.
++    // blockIdx.z = (sequence, K/V head, group of ncols2 Q heads); for ncols2 == 1 this is (sequence, Q head).
++    const int gqa_ratio  = ne02 / ne12; // With grouped query attention there are > 1 Q matrices per K, V matrix.
++    const int iter_z_gqa = (gqa_ratio + ncols2 - 1) / ncols2;
++    const int sequence   = blockIdx.z / (iter_z_gqa*ne12);
++    const int z_KV       = (blockIdx.z - sequence*iter_z_gqa*ne12) / iter_z_gqa;
++    const int zt_gqa     = blockIdx.z - sequence*iter_z_gqa*ne12 - z_KV*iter_z_gqa;
++    const int head       = z_KV*gqa_ratio + zt_gqa*ncols2; // First Q head of the block.
+     Q += nb03*sequence + nb02* head              + nb01*ic0;
+-    K += nb13*sequence + nb12*(head / gqa_ratio);
+-    V += nb23*sequence + nb22*(head / gqa_ratio);
++    K += nb13*sequence + nb12*z_KV;
++    V += nb23*sequence + nb22*z_KV;
+ 
+     const half * maskh  = (const half  *) (mask + nb33*(sequence % ne33) + nb31*ic0);
+ 
+-    const float slope = get_alibi_slope(max_bias, head, n_head_log2, m0, m1);
++    // Q heads are only packed without ALiBi (one slope per block).
++    const float slope = ncols2 == 1 ? get_alibi_slope(max_bias, head, n_head_log2, m0, m1) : 1.0f;
++
++    // Column jc exists if its token is in the batch and its Q head is not padding.
++    auto col_valid = [&](const int jc) {
++        return (ncols1 == 1 || ic0 + jc/ncols2 < int(ne01.z)) && (ncols2 == 1 || zt_gqa*ncols2 + jc%ncols2 < gqa_ratio);
++    };
++    auto col_Q_offset = [&](const int jc) { return (jc/ncols2)*nb01 + (jc%ncols2)*nb02; };
+ 
+     static_assert(D % (2*WARP_SIZE) == 0, "D not divisible by 2*WARP_SIZE == 64.");
+     constexpr int nwarps = nthreads / WARP_SIZE;
+     const int tid = WARP_SIZE*threadIdx.y + threadIdx.x;
+     __builtin_assume(tid < nthreads);
+ 
+-    constexpr int ne_KQ      = ncols*D;
++    // KQ holds the q8_1 Q (D per column) and later the softmax values (nthreads per column).
++    constexpr int ne_KQ      = ncols*(D > nthreads ? D : nthreads);
+     constexpr int ne_combine = nwarps*V_cols_per_iter*D;
+ #ifdef V_DOT2_F32_F16_AVAILABLE
+     half2            VKQ[ncols][(D/2)/nthreads_V] = {{{0.0f, 0.0f}}};
+@@ -161,7 +180,7 @@ static __global__ void flash_attn_ext_vec(
+             float2 * tmp_q_ds  = (float2 *) (tmp_q_i32 + D/sizeof(int));
+ 
+             // Set memory to zero if out of bounds:
+-            if (ncols > 1 && ic0 + j >= int(ne01.z)) {
++            if (ncols > 1 && !col_valid(j)) {
+ #pragma unroll
+                 for (int i0 = 0; i0 < int(D/sizeof(int)); i0 += WARP_SIZE) {
+                     const int i = i0 + threadIdx.x;
+@@ -174,7 +193,7 @@ static __global__ void flash_attn_ext_vec(
+                     tmp_q_ds[threadIdx.x] = make_float2(0.0f, 0.0f);
+                 }
+             } else {
+-                const float * Q_f = (const float *) (Q + j*nb01);
++                const float * Q_f = (const float *) (Q + col_Q_offset(j));
+                 constexpr int nthreads_quantize = D/sizeof(int) < WARP_SIZE ? D/sizeof(int) : WARP_SIZE;
+ #pragma unroll
+                 for (int i0 = 0; i0 < int(D/sizeof(int)); i0 += nthreads_quantize) {
+@@ -206,13 +225,13 @@ static __global__ void flash_attn_ext_vec(
+         const half2 scale_h2 = make_half2(scale, scale);
+ #pragma unroll
+         for (int j = 0; j < ncols; ++j) {
+-            const float2 * Q_j = (const float2 *) (Q + j*nb01);
++            const float2 * Q_j = (const float2 *) (Q + col_Q_offset(j));
+ #pragma unroll
+             for (int i0 = 0; i0 < D/2; i0 += nthreads_KQ*cpy_ne) {
+                 const int i = i0 + (nthreads_KQ == WARP_SIZE ? threadIdx.x : threadIdx.x % nthreads_KQ)*cpy_ne;
+ 
+                 __align__(16) float2 tmp[cpy_ne] = {{0.0f, 0.0f}};
+-                if (ncols == 1 || ic0 + j < int(ne01.z)) {
++                if (ncols == 1 || col_valid(j)) {
+                     ggml_cuda_memcpy_1<cpy_nb>(tmp,            &Q_j[i]);
+                     ggml_cuda_memcpy_1<cpy_nb>(tmp + cpy_ne/2, &Q_j[i + cpy_ne/2]);
+                 }
+@@ -229,11 +248,11 @@ static __global__ void flash_attn_ext_vec(
+ #else
+ #pragma unroll
+         for (int j = 0; j < ncols; ++j) {
+-            const float2 * Q_j = (const float2 *) (Q + j*nb01);
++            const float2 * Q_j = (const float2 *) (Q + col_Q_offset(j));
+ #pragma unroll
+             for (int i0 = 0; i0 < D/2; i0 += nthreads_KQ*cpy_ne) {
+                 const int i = i0 + (nthreads_KQ == WARP_SIZE ? threadIdx.x : threadIdx.x % nthreads_KQ)*cpy_ne;
+-                if (ncols == 1 || ic0 + j < int(ne01.z)) {
++                if (ncols == 1 || col_valid(j)) {
+                     ggml_cuda_memcpy_1<cpy_nb>(&Q_reg[j][i0/nthreads_KQ],            &Q_j[i]);
+                     ggml_cuda_memcpy_1<cpy_nb>(&Q_reg[j][i0/nthreads_KQ + cpy_ne/2], &Q_j[i + cpy_ne/2]);
+                 }
+@@ -264,7 +283,7 @@ static __global__ void flash_attn_ext_vec(
+             KQ_max_new[j] = KQ_max[j];
+         }
+ 
+-#pragma unroll
++#pragma unroll unroll_KQ
+         for (int i_KQ_0 = 0; i_KQ_0 < nthreads_KQ; ++i_KQ_0) {
+             const int i_KQ = threadIdx.y*WARP_SIZE + (nthreads_KQ == WARP_SIZE ? 0 : (threadIdx.x & ~(nthreads_KQ-1))) + i_KQ_0;
+ 
+@@ -277,8 +296,8 @@ static __global__ void flash_attn_ext_vec(
+                     sum = logit_softcap*tanhf(sum);
+                 }
+ 
+-                if (mask && (ncols == 1 || ic0 + j < int(ne01.z))) {
+-                    sum += slope*__half2float(maskh[j*ne11 + i_KQ]);
++                if (mask && (ncols == 1 || col_valid(j))) {
++                    sum += slope*__half2float(maskh[(j/ncols2)*ne11 + i_KQ]);
+                 }
+ 
+                 KQ_max_new[j] = fmaxf(KQ_max_new[j], sum + FATTN_KQ_MAX_OFFSET);
+@@ -319,7 +338,7 @@ static __global__ void flash_attn_ext_vec(
+ 
+         ggml_cuda_syncwarp();
+ 
+-#pragma unroll
++#pragma unroll unroll_V
+         for (int k0 = 0; k0 < WARP_SIZE; k0 += V_cols_per_iter) {
+             const int k = threadIdx.y*WARP_SIZE + k0 + (nthreads_V == WARP_SIZE ? 0 : threadIdx.x / nthreads_V);
+ 
+@@ -377,15 +396,15 @@ static __global__ void flash_attn_ext_vec(
+     }
+ 
+     if (sinks && blockIdx.y == 0) {
+-        const float sink = ((const float *) sinks)[head];
+-
++        // Warp j % nwarps adds the sink of column j. Loop over j with a compile-time index: indexing the per-column
++        // register arrays with threadIdx.y would move them to local memory once there are more than 2 columns.
+ #pragma unroll
+-        for (int j0 = 0; j0 < ncols; j0 += nwarps) {
+-            const int j = j0 + threadIdx.y;
+-
+-            if (j0 + nwarps > ncols && j >= ncols) {
+-                break;
++        for (int j = 0; j < ncols; ++j) {
++            if (j % nwarps != int(threadIdx.y)) {
++                continue;
+             }
++            // Padded Q heads have no sink (and their results are discarded).
++            const float sink = ncols2 == 1 || col_valid(j) ? ((const float *) sinks)[head + j%ncols2] : -INFINITY;
+ 
+             const float kqmax_new_j = fmaxf(sink, KQ_max[j]);
+             const float KQ_max_scale = expf(KQ_max[j] - kqmax_new_j);
+@@ -431,7 +450,9 @@ static __global__ void flash_attn_ext_vec(
+ 
+ #pragma unroll
+     for (int j_VKQ = 0; j_VKQ < ncols; ++j_VKQ) {
+-        if (ncols > 1 && ic0 + j_VKQ >= int(ne01.z)) {
++        // Invalid columns are trailing: tokens past the batch (ncols2 == 1) or padded Q heads (ncols1 == 1).
++        static_assert(ncols1 == 1 || ncols2 == 1, "padded heads and partial token tiles are not combined");
++        if (ncols > 1 && !col_valid(j_VKQ)) {
+             break;
+         }
+ 
+@@ -498,7 +519,7 @@ static __global__ void flash_attn_ext_vec(
+                 if (gridDim.y == 1) {
+                     dst_val /= KQ_sum[j_VKQ];
+                 }
+-                dst[(((sequence*int(ne01.z) + ic0 + j_VKQ)*ne02 + head)*gridDim.y + blockIdx.y)*D + i0 + tid] = dst_val;
++                dst[(((sequence*int(ne01.z) + ic0 + j_VKQ/ncols2)*ne02 + head + j_VKQ%ncols2)*gridDim.y + blockIdx.y)*D + i0 + tid] = dst_val;
+             }
+         }
+ 
+@@ -508,8 +529,8 @@ static __global__ void flash_attn_ext_vec(
+ 
+     }
+ 
+-    if (gridDim.y != 1 && tid < ncols && (ncols == 1 || ic0 + tid < int(ne01.z))) {
+-        dst_meta[((sequence*int(ne01.z) + ic0 + tid)*ne02 + head)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
++    if (gridDim.y != 1 && tid < ncols && (ncols == 1 || col_valid(tid))) {
++        dst_meta[((sequence*int(ne01.z) + ic0 + tid/ncols2)*ne02 + head + tid%ncols2)*gridDim.y + blockIdx.y] = make_float2(KQ_max[tid], KQ_sum[tid]);
+     }
+ #else
+     GGML_UNUSED_VARS(Q_ptr, K_ptr, V_ptr, mask_ptr, sinks_ptr, KV_max_ptr, dst_ptr, dst_meta_ptr, scale,
+@@ -528,17 +549,17 @@ static __global__ void flash_attn_ext_vec(
+ #pragma clang diagnostic pop
+ #endif // __clang__
+ 
+-template <int D, int cols_per_block, ggml_type type_K, ggml_type type_V, bool use_logit_softcap>
++template <int D, int ncols1, int ncols2, ggml_type type_K, ggml_type type_V, bool use_logit_softcap>
+ void ggml_cuda_flash_attn_ext_vec_case_impl(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
+     const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
+ 
+     const int nthreads = ggml_cuda_fattn_vec_get_nthreads_host(cc);
+     const int nwarps   = nthreads / WARP_SIZE;
+-    fattn_kernel_t fattn_kernel = flash_attn_ext_vec<D, cols_per_block, type_K, type_V, use_logit_softcap>;
++    fattn_kernel_t fattn_kernel = flash_attn_ext_vec<D, ncols1, ncols2, type_K, type_V, use_logit_softcap>;
+     const bool need_f16_K = type_K == GGML_TYPE_F16;
+     const bool need_f16_V = type_V == GGML_TYPE_F16;
+     constexpr size_t nbytes_shared = 0;
+-    launch_fattn<D, cols_per_block, 1>(ctx, dst, fattn_kernel, nwarps, nbytes_shared, D, need_f16_K, need_f16_V, false, false);
++    launch_fattn<D, ncols1, ncols2>(ctx, dst, fattn_kernel, nwarps, nbytes_shared, D, need_f16_K, need_f16_V, false, false);
+ }
+ 
+ template <int D, ggml_type type_K, ggml_type type_V>
+@@ -549,14 +570,34 @@ void ggml_cuda_flash_attn_ext_vec_case(ggml_backend_cuda_context & ctx, ggml_ten
+     float logit_softcap;
+     memcpy(&logit_softcap, (const float *) KQV->op_params + 2, sizeof(float));
+ 
++    // Quantized K, one token: put the Q heads that share a K/V head into one block (padded to 4 or 8 heads, the
++    // extra heads masked) so that K/V are read and dequantized once per group instead of once per Q head.
++    // Q is kept as q8_1 for quantized K, so 8 columns fit in registers; F16/BF16 K keep Q as floats and would spill.
++    if constexpr (type_K != GGML_TYPE_F16 && type_K != GGML_TYPE_BF16) {
++        const int gqa_ratio = Q->ne[2] / dst->src[1]->ne[2];
++        float max_bias;
++        memcpy(&max_bias, (const float *) KQV->op_params + 1, sizeof(float));
++        static const int vfa_nc2 = getenv("VFA_VEC_NCOLS2") ? atoi(getenv("VFA_VEC_NCOLS2")) : 0; // bench-only switch
++        if (Q->ne[1] == 1 && gqa_ratio >= (vfa_nc2 ? 2 : 3) && vfa_nc2 != 1 && max_bias == 0.0f && logit_softcap == 0.0f) {
++            if (vfa_nc2 == 2) {
++                ggml_cuda_flash_attn_ext_vec_case_impl<D, 1, 2, type_K, type_V, false>(ctx, dst);
++            } else if (vfa_nc2 == 8 || (vfa_nc2 == 0 && gqa_ratio > 4)) {
++                ggml_cuda_flash_attn_ext_vec_case_impl<D, 1, 8, type_K, type_V, false>(ctx, dst);
++            } else {
++                ggml_cuda_flash_attn_ext_vec_case_impl<D, 1, 4, type_K, type_V, false>(ctx, dst);
++            }
++            return;
++        }
++    }
++
+     if (Q->ne[1] == 1) {
+         constexpr int cols_per_block = 1;
+         if (logit_softcap == 0.0f) {
+             constexpr bool use_logit_softcap = false;
+-            ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, type_K, type_V, use_logit_softcap>(ctx, dst);
++            ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, 1, type_K, type_V, use_logit_softcap>(ctx, dst);
+         } else {
+             constexpr bool use_logit_softcap = true;
+-            ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, type_K, type_V, use_logit_softcap>(ctx, dst);
++            ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, 1, type_K, type_V, use_logit_softcap>(ctx, dst);
+         }
+         return;
+     }
+@@ -564,10 +605,10 @@ void ggml_cuda_flash_attn_ext_vec_case(ggml_backend_cuda_context & ctx, ggml_ten
+     constexpr int cols_per_block = 2;
+     if (logit_softcap == 0.0f) {
+         constexpr bool use_logit_softcap = false;
+-        ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, type_K, type_V, use_logit_softcap>(ctx, dst);
++        ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, 1, type_K, type_V, use_logit_softcap>(ctx, dst);
+     } else {
+         constexpr bool use_logit_softcap = true;
+-        ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, type_K, type_V, use_logit_softcap>(ctx, dst);
++        ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, 1, type_K, type_V, use_logit_softcap>(ctx, dst);
+     }
+ }
+ 
+diff --git a/ggml/src/ggml-cuda/fattn.cu b/ggml/src/ggml-cuda/fattn.cu
+index bb34e01f3..2611f9687 100644
+--- a/ggml/src/ggml-cuda/fattn.cu
++++ b/ggml/src/ggml-cuda/fattn.cu
+@@ -175,7 +175,8 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+     }
+ 
+     if constexpr (ncols2 <= 16) {
+-        if (Q->ne[1] <= 16/ncols2) {
++        // Volta has no MMA instances with ncols1*ncols2 < 32 (they are compiled as NO_DEVICE_CODE).
++        if (!volta_mma_available(cc) && Q->ne[1] <= 16/ncols2) {
+             ggml_cuda_flash_attn_ext_mma_f16_case<DKQ, DV, 16/ncols2, ncols2>(ctx, dst);
+             return;
+         }
+@@ -190,6 +191,32 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1(ggml_backend_cuda_con
+     ggml_cuda_flash_attn_ext_mma_f16_case<DKQ, DV, 64/ncols2, ncols2>(ctx, dst);
+ }
+ 
++// Q heads per MMA tile (ncols2) on Volta. Kernel selection and the Volta dispatch below must agree on this value:
++// selection decides VEC/TILE/MMA from n_q*ncols2, and Volta MMA instances need ncols1*ncols2 >= 32.
++// Without the GQA optimization every Q head is its own tile (ncols2 = 1).
++// For a non-power-of-two GQA ratio (3, 5, 6, 7) and a small batch, the ratio is padded to the next power of two:
++// the kernel masks the extra heads, and each K/V head is then streamed once instead of once per 2-head group.
++// Large batches keep exact divisors, where padding would waste tensor core columns without saving K/V reads.
++static int ggml_cuda_fattn_mma_f16_volta_ncols2(const int DKQ, const int gqa_ratio, const bool gqa_opt, const int64_t n_q) {
++    if (!gqa_opt) {
++        return 1;
++    }
++    if (gqa_ratio % 8 == 0) {
++        return 8;
++    }
++    if (gqa_ratio % 4 == 0) {
++        return 4;
++    }
++    const bool gqa_pow2 = (gqa_ratio & (gqa_ratio - 1)) == 0;
++    if (!gqa_pow2 && gqa_ratio < 8 && DKQ <= 256 && n_q >= 3 && n_q <= 16) {
++        return gqa_ratio > 4 ? 8 : 4;
++    }
++    if (DKQ <= 256 && gqa_ratio % 2 == 0) {
++        return 2;
++    }
++    return 1;
++}
++
+ template <int DKQ, int DV>
+ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
+     const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
+@@ -222,14 +249,15 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
+ 
+     // On Volta the GQA optimizations aren't as impactful vs. minimizing wasted compute:
+     if (cc == GGML_CUDA_CC_VOLTA) {
+-        if (use_gqa_opt && gqa_ratio % 8 == 0) {
+-            ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
+-            return;
+-        }
+-
+-        if (use_gqa_opt && gqa_ratio % 4 == 0) {
+-            ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 4>(ctx, dst);
+-            return;
++        switch (ggml_cuda_fattn_mma_f16_volta_ncols2(DKQ, gqa_ratio, use_gqa_opt, Q->ne[1])) {
++            case 8:
++                ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 8>(ctx, dst);
++                return;
++            case 4:
++                ggml_cuda_flash_attn_ext_mma_f16_switch_ncols1<DKQ, DV, 4>(ctx, dst);
++                return;
++            default:
++                break;
+         }
+ 
+         if constexpr (DKQ <= 256) {
+@@ -671,10 +699,22 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
+     }
+ 
+     if (volta_mma_available(cc) && Q->ne[0] != 40 && Q->ne[0] != 72) {
+-        if (can_use_vector_kernel && Q->ne[1] * gqa_ratio_eff <= 2) {
++        // Must match the Volta branch of ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2: it uses ncols2 = 1 when
++        // the GQA optimization does not apply, and a larger value here would select MMA for a batch that the
++        // dispatch then has to run as a < 32 column instance, which Volta does not compile.
++        const int volta_ncols2 = ggml_cuda_fattn_mma_f16_volta_ncols2(Q->ne[0], gqa_ratio, gqa_opt_applies, Q->ne[1]);
++        // TILE and MMA convert a quantized or BF16 K/V to F16 on every call, which for a single token costs more
++        // than the attention itself. VEC reads these types directly (as on Turing), if its instance is compiled.
++        const bool kv_converted = (K->type != GGML_TYPE_F16 && K->type != GGML_TYPE_F32) ||
++                                  (V->type != GGML_TYPE_F16 && V->type != GGML_TYPE_F32);
++        if (can_use_vector_kernel && Q->ne[1] == 1 && kv_converted &&
++                ggml_cuda_get_fattn_vec_case(Q->ne[0], K->type, V->type) != nullptr) {
++            return BEST_FATTN_KERNEL_VEC;
++        }
++        if (can_use_vector_kernel && Q->ne[1] * volta_ncols2 <= 2) {
+             return BEST_FATTN_KERNEL_VEC;
+         }
+-        if (Q->ne[1] * gqa_ratio_eff <= 16) {
++        if (Q->ne[1] * volta_ncols2 <= 16) {
+             return BEST_FATTN_KERNEL_TILE; // On Volta tensor cores are only faster for sufficiently large matrices.
+         }
+         return BEST_FATTN_KERNEL_MMA_F16;
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+index 4e3c6942b..6107b37a0 100644
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -11695,6 +11695,53 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+     // KV not a multiple of the compaction workgroup size.
+     test_cases.emplace_back(new test_flash_attn_ext(128, 128, 1, { 8, 1}, 5003, 4, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16, {0, 1, 2, 3}, true, false,  512));
+ 
++    // Non-power-of-two GQA ratios at small batch sizes: on Volta the MMA kernel pads the Q heads per tile
++    // to the next power of two and masks the extra heads (including their attention sinks).
++    for (int hs : { 128, 256 }) {
++        for (int gqa : { 3, 5, 6, 7 }) {
++            for (int nb : { 1, 2, 3, 4, 8, 16 }) {
++                for (bool sinks : { false, true }) {
++                    test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 4096, nb, true, sinks, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++                }
++            }
++        }
++    }
++    // GQA optimization disabled (KV length not a multiple of FATTN_KQ_STRIDE) at small batch sizes.
++    for (int gqa : { 4, 6, 8 }) {
++        for (int nb : { 4, 8, 16 }) {
++            test_cases.emplace_back(new test_flash_attn_ext(128, 128, 2, {gqa, 1}, 5003, nb, true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++        }
++    }
++    // Quantized and BF16 K/V with GQA at 1-2 tokens: on Volta a single token uses the vector kernel on these types
++    // directly; 2 tokens and unpadded KV lengths still convert K/V to F16 for the tile kernel.
++    for (int hs : { 128, 256 }) {
++        for (ggml_type type_KV : { GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, GGML_TYPE_BF16 }) {
++            for (int gqa : { 4, 6, 8 }) {
++                for (int nb : { 1, 2 }) {
++                    for (bool sinks : { false, true }) {
++                        test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 4096, nb, true, sinks, 0, 0, GGML_PREC_F32, type_KV, type_KV));
++                    }
++                }
++                test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 5003, 1, true, false, 0, 0, GGML_PREC_F32, type_KV, type_KV));
++            }
++            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {4, 1}, 4096, 1, true, false, 0, 0, GGML_PREC_F32, type_KV, type_KV, {0, 2, 1, 3}));
++            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {4, 1}, 4096, 1, true, false, 0, 10.0f, GGML_PREC_F32, type_KV, type_KV));
++        }
++    }
++    // Quantized K at one token: the vector kernel packs the Q heads of a K/V head into one block (4 or 8, padded heads
++    // masked, including their sinks); GQA 12 needs two blocks per K/V head, ALiBi keeps one Q head per block.
++    for (int hs : { 64, 128, 256 }) {
++        for (ggml_type type_KV : { GGML_TYPE_Q8_0, GGML_TYPE_Q4_0 }) {
++            for (int gqa : { 3, 5, 7, 12 }) {
++                for (bool sinks : { false, true }) {
++                    test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {gqa, 1}, 4096, 1, true, sinks, 0, 0, GGML_PREC_F32, type_KV, type_KV));
++                }
++            }
++            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {6, 2}, 4096, 1, true, false, 0, 0, GGML_PREC_F32, type_KV, type_KV));
++            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {8, 1}, 4096, 1, true, false, 8.0f, 0, GGML_PREC_F32, type_KV, type_KV));
++        }
++    }
++
+     // Sparse gather: native block sizes, padded slots, and head/batch strides.
+     for (ggml_type type : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_BF16, GGML_TYPE_Q4_0, GGML_TYPE_Q4_1, GGML_TYPE_Q5_0, GGML_TYPE_Q5_1, GGML_TYPE_Q8_0, GGML_TYPE_IQ4_NL}) {
+         test_cases.emplace_back(new test_flash_attn_ext(128, 96, 2, {8, 2}, 5003, 3, true, false, 0, 0, GGML_PREC_F32, type, type, {0, 1, 2, 3}, true, false, 257));
+@@ -12187,6 +12234,7 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+ 
+     // Qwen3-VL-8B https://github.com/ggml-org/llama.cpp/issues/17012
+     test_cases.emplace_back(new test_flash_attn_ext(72, 72, 16, {1, 1}, 5776, 5776, false, false, 0, 0, GGML_PREC_F32, GGML_TYPE_F16, GGML_TYPE_F16));
++    for (int hs : {64, 128, 256}) { for (int gqa : {1, 2, 3, 4, 5, 6, 7, 8}) { for (int kv : {4096, 32768}) { for (ggml_type t : {GGML_TYPE_Q8_0, GGML_TYPE_Q4_0}) { test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 4, {gqa, 1}, kv, 1, true, false, 0, 0, GGML_PREC_F32, t, t)); } } } } // vecpack
+ 
+     // Sparse flash attention (n_kv_max hint) decode across KV depths.
+     // Shapes: 576/512 DeepSeek MLA, 512/512 DeepSeek-V4/GLM-5.2, 256/256 gqa12 Qwen QSA.

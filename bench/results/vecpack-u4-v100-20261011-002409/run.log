@@ -1,0 +1,17 @@
+[00:24:09] perf nc2=1 r1 135 MHz, 35, 24.07 W
+[00:27:15] perf nc2=2 r1 1380 MHz, 47, 45.10 W
+[00:30:21] perf nc2=4 r1 1335 MHz, 47, 43.17 W
+[00:33:29] perf nc2=8 r1 1380 MHz, 47, 45.39 W
+[00:36:35] perf nc2=1 r2 1380 MHz, 44, 43.83 W
+[00:39:41] perf nc2=2 r2 1380 MHz, 47, 45.10 W
+[00:42:46] perf nc2=4 r2 1372 MHz, 48, 45.10 W
+[00:45:50] perf nc2=8 r2 1380 MHz, 47, 45.57 W
+[00:48:53] llama-bench kv=q8_0 nc2=1 r1 1380 MHz, 44, 44.32 W
+[00:49:08] llama-bench kv=q8_0 nc2=0 r1 1380 MHz, 48, 45.07 W
+[00:49:22] llama-bench kv=q4_0 nc2=1 r1 1380 MHz, 49, 45.58 W
+[00:49:36] llama-bench kv=q4_0 nc2=0 r1 1380 MHz, 51, 46.17 W
+[00:49:50] llama-bench kv=q8_0 nc2=1 r2 1380 MHz, 51, 46.27 W
+[00:50:04] llama-bench kv=q8_0 nc2=0 r2 1380 MHz, 52, 46.56 W
+[00:50:18] llama-bench kv=q4_0 nc2=1 r2 1380 MHz, 52, 46.46 W
+[00:50:33] llama-bench kv=q4_0 nc2=0 r2 1380 MHz, 52, 46.65 W
+[00:50:46] done

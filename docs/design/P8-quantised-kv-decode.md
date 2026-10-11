@@ -5,8 +5,10 @@ Status: **implemented as patches `0004..0006` (on top of P-6's `0001..0003`), me
 1.67–6.92× faster. Passed: `qkv` ≥ 2× at 1 token (2.08–3.31×), no f16 change, `conv8` ≥ 1.5× `qkv` at D=128
 (1.95–2.21×). Missed: `conv8` vs `qkv` at D=256 (1.31–1.39×) and Llama-3.1-8B q8_0 tg64 @16K (+16.7% vs
 +25%; q4_0 +36.2%). The series recovers 50–57% of the quantised-vs-f16 decode gap on that model. Change 4
-gate triggered (GQA 8 ÷ GQA 4 = 1.88–1.97): GQA-packed VEC is the next design. Owner decision points are
-marked **Decision**.
+gate triggered (GQA 8 ÷ GQA 4 = 1.88–1.97). **Change 4 is now patch `0007`** (`P8-change4-packed-vec.md`,
+`docs/research/pad-rule-vecpack-v100-2026-10-10.md`): with it, Llama-3.1-8B q8_0 tg64 @16K is **+26.8%** over
+upstream (target met; q4_0 +56.2%, f16 0.0%), and a quantised cache is 5% behind f16 on that model (was 25%).
+Owner decision points are marked **Decision**.
 
 ## Problem (measured, `docs/research/phase0-cloud-2026-10-10.md` §3, §6)
 
@@ -89,7 +91,7 @@ so it uses 2-byte aligned loads and 8/16-byte stores. Its arithmetic is the same
 so the output is bit-identical. It falls back to the generic kernel if a row is not a whole number of
 blocks or the plane exceeds `INT_MAX` threads. Registers: ≤ 32, no spills (sm_70, all dst types).
 
-### Change 4 (deferred, gated on the measurement): GQA-packed VEC
+### Change 4 (gate triggered; now patch 0007, see `P8-change4-packed-vec.md`): GQA-packed VEC
 
 If VEC's single-token time grows with the GQA ratio (L2 not absorbing the per-head re-reads), pack the
 GQA group into VEC's column dimension, the same `jc → (token, head)` mapping TILE and MMA use. K/V are

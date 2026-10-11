@@ -1,17 +1,17 @@
-# P-8 Change 4 (prototype): GQA-packed VEC kernel for quantised-KV decode
+# P-8 Change 4: GQA-packed VEC kernel for quantised-KV decode
 
-Status: **prototype, not part of the measured series.** Patch `third_party/patches/next/0007-*.patch` applies on
-top of `0001..0006` (checked on `79e2e74`). Statically checked for sm_70; correctness and a relative timing on
-the laptop's Maxwell GPU (below).
-It goes into a V100 A/B only if the Change 4 gate in `P8-quantised-kv-decode.md` trips (`bench/patches/check.py`
-reports it), or as an extra variant if a session has spare time.
+Status: **patch `third_party/patches/0007-*.patch`, measured on a V100** (`docs/research/pad-rule-vecpack-v100-2026-10-10.md`).
+Full FA suite 4334/4334 on sm_70 and on the laptop's sm_52 (memcheck clean). Llama-3.1-8B tg64 @16K vs upstream:
+q8_0 **+26.8%**, q4_0 +56.2%, f16 0.0%; Qwen3.8-27B q8_0 +5.8%. Kernel: 1.08–2.45× at 32K for GQA 3–8 vs
+unpacked. Known costs: GQA 3 at 4K (0.88–0.92×; D=64 GQA 5 q8_0 0.95×) and D=256 f16 single-token decode at
+GQA 3/5/6/7 (0.96–0.98×, unpacked instances whose code 0007 touches; not attributed).
+In the harness as variant `vecpack` (0001–0007).
 
 ## Why
 
 With `0004`, single-token decode with a quantised cache uses VEC on Volta. VEC runs one block per Q head, so a
-K/V head is read (and dequantised) once per Q head. GQA 4–8 means 4–8 reads, unless L2 absorbs them. The
-cost model brackets 0004 between 1 read and GQA reads (Llama-like at 16K, q8_0: 45–178 µs per layer).
-Packing the Q heads of a K/V head into one block makes it 1 read by construction.
+K/V head is read and dequantised once per Q head. On the V100 the unpacked time per Q head is about constant
+(D=128 q8_0 32K: ~37 µs at GQA 4, 6 and 8), which tripped the Change 4 gate in `P8-quantised-kv-decode.md`.
 
 ## What the patch does (`fattn-vec.cuh`, plus tests)
 
@@ -22,58 +22,44 @@ Packing the Q heads of a K/V head into one block makes it 1 read by construction
 - Per column: the Q pointer, the validity check (token in the batch, head not padding), the mask row (shared
   by the heads of a token), the sink (guarded for padded heads), and the output and meta indices. ALiBi
   is excluded (one slope per block).
-- Used only for **quantised K, one token, GQA ≥ 3, no softcap, no ALiBi**: `ncols2 = 4` for GQA 3–4 and 8
-  for GQA ≥ 5, so GQA 12 uses two blocks per K/V head. Quantised K keeps Q as q8_1 (a few registers per
-  column); F16/BF16 K keep Q as floats and would spill at 8 columns.
-- Registers (sm_70, nvcc 12.8, q8_0 / q4_0 instances, all with 0 spill and 0 stack):
+- **Rule** (quantised K, one token, no softcap, no ALiBi): GQA ≥ 3; **4 heads per block when the GQA ratio is a
+  multiple of 4 or is 7** (7 padded to 8), **otherwise 2** (3 → 4, 5 → 6, 6 exact). GQA 1–2 unpacked. Chosen by
+  scoring rules against 72 measured V100 cells (D 64/128/256 × q8_0/q4_0 × GQA 3–8 × KV 4K/32K): 8 heads per
+  block was never faster than 4; GQA 6 is fastest as 3 blocks of 2; packing GQA 2 gains 1.15–1.45× at 32K but
+  loses 0.78× at D=256 4K.
+- Quantised K keeps Q as q8_1 (a few registers per column); F16/BF16 K keep Q as floats and are not packed.
+- **The key loops of packed instances are unrolled 4×** (fully unrolled they spill; not unrolled they were
+  1.19–1.59× slower on the V100, median 1.40×). Registers on sm_70 (nvcc 12.8), all with 0 spill and 0 stack:
 
-  | D | ncols2 = 4 | ncols2 = 8 |
+  | D | 2 heads (q8_0 / q4_0) | 4 heads (q8_0 / q4_0) |
   | --- | --- | --- |
-  | 64 | 80 / 91 | 128 / 139 |
-  | 128 | 85 / 92 | 130 / 142 |
-  | 256 | 114 / 124 | 184 / 201 |
+  | 64 | 76 / 78 | 118 / 125 |
+  | 128 | 80 / 80 | 126 / 128 |
+  | 256 | 120 / 120 | 161 / 163 |
 
-  Three changes were needed to get there:
-  1. **The key loops are not unrolled in packed instances.** Fully unrolled, they spilled 24–52 B stores and
-     168–212 B loads at 8 heads.
-  2. **The sink loop indexes columns at compile time.** Indexing the per-column register arrays with
-     `threadIdx.y` moved them to local memory once there were more than 2 columns (160–320 B of stack).
-     The same rewrite also cuts upstream's existing 2-token instances from 48–80 B of stack to 0–16 B.
-     The 1-token instances are unchanged.
-  3. **The KQ shared buffer is sized for the softmax values** (`ncols × nthreads`), not just `ncols × D`.
-     Upstream's ≤ 2 columns always fit inside the combine buffer. At D=64 with 8 columns they did not:
-     the first build failed 14 tests (D=64, GQA 5/6/7/12) with inf/NaN, all of them that one shape.
-- Unroll factor: packed instances with unroll 4 also have 0 spill, but use more registers (126–250). Unroll 1
-  was chosen for occupancy; it is a one-constant change if V100 numbers favour unroll.
-- Architecture scope: the packing is not Volta-specific. Any GPU whose selection picks VEC for quantised
-  decode (Turing+, Pascal) would use it. That needs measurements there before upstreaming, or a
-  Volta-only switch.
+- The sink loop indexes columns at compile time (indexing per-column register arrays with `threadIdx.y` put
+  them in local memory). The same rewrite cuts upstream's 2-token instances from 48–80 B of stack to 0–16 B.
+- The KQ shared buffer is sized for the softmax values (`ncols × nthreads`), not just `ncols × D`. Upstream's
+  ≤ 2 columns always fit; 8 columns at D=64 did not (14 inf/NaN failures in the first build, which packed 8).
+- Architecture scope: the packing is not Volta-specific. Any GPU whose selection picks VEC for quantised decode
+  (Turing+, Pascal, Maxwell at ≤ 2 tokens) uses it. Measured only on the V100 and (correctness, relative timing
+  of the first prototype) the laptop's Maxwell GPU; needs measurements elsewhere or a Volta-only switch before
+  upstreaming.
+
+## History (why the first prototype was wrong)
+
+The first version packed 4 heads for GQA 3–4 and 8 for GQA ≥ 5, with the key loops not unrolled to save
+registers. On Maxwell it looked good (D=256 2.8–4.3×). On the V100 it lost in 42 of 72 cells (to 0.46×) and
+gave Llama q8_0 +0.6%: the per-block latency, not the K/V re-reads, dominated. Unrolling 4× fixed the latency,
+and the V100 grid replaced the 4/8 rule. Bench-only switches used for this are in the results' `*.patch` files.
 
 ## Tests (60 new cases)
 
 D 64/128/256 × q8_0/q4_0 × GQA 3/5/7/12 × sinks on/off, plus 2 sequences (GQA 6) and ALiBi (GQA 8, stays
-unpacked). These are in addition to the P-8 cases at GQA 4/6/8 that `0004` added.
+unpacked). With the final rule these cover 2 heads padded (GQA 3, 5) and exact (GQA 6, 2 sequences), 4 heads
+padded (GQA 7) and exact (GQA 12; GQA 4/8 come from `0004`'s cases).
 
-## Local results (Quadro M2200, sm_52, not a V100)
+## Not measured
 
-- Full `FLASH_ATTN_EXT`: **4260/4260 passed** (the 4200 earlier cases plus the 60 new ones).
-  compute-sanitizer memcheck: 0 errors on 16 packed cases (D 64/256, GQA 3/5/6/12, 2 sequences, sinks).
-- Timing, packed vs unpacked VEC (both with `0001..0006`), 1 token, 3 interleaved rounds, medians
-  (`bench/results/m2200-vecpack-20261010/summary.md`):
-
-  | D | GQA 1–2 | GQA 4 | GQA 6 (padded to 8) | GQA 8 |
-  | --- | --- | --- | --- | --- |
-  | 128, KV 4K/16K | 0.99–1.01× | 1.03–1.38× | **0.93–1.03×** | 1.20–1.36× |
-  | 256, KV 4K/16K | 0.97–1.01× | 3.0–4.1× | 2.8–3.2× | 3.6–4.3× |
-
-  Unpacked VEC time grows almost linearly with GQA on this GPU (2 MB L2), so the per-head re-reads are not
-  absorbed. On the V100 (6 MB L2, far more bandwidth), whether they are is exactly what the Change 4 gate
-  measures. **Decision (on V100 data):** for non-power-of-two GQA at D=128, padding to 8 did not help here.
-  The alternative is the exact divisor (GQA 6 → 3 blocks of 2), i.e. P-6's question again in the VEC kernel.
-
-## To measure on a V100
-
-Copy the patch to `third_party/patches/0007-…` and add `vecpack) echo 7 ;;` to `npatch` in
-`bench/patches/run.sh`. Then run `VARIANTS="upstream p6cfg qkv conv8 vecpack"`. Compare `vecpack` against
-`conv8` at 1 token, GQA 4/6/8, KV 4K/32K, q8_0/q4_0. Expected: equal at GQA ≤ 2 (unpacked); faster as GQA
-grows, if L2 was not already absorbing the re-reads.
+8 K/V heads at kernel level (the Llama end-to-end result has 8), GQA > 8, several sequences, f16 Qwen3.8-27B
+decode with 0007, perplexity, other architectures.

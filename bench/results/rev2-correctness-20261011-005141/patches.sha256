@@ -1,0 +1,7 @@
+8883abfb7e3bf42dfce30c1d9bc145d4a6821de079f0cbc379b11a763072dc61  0001-CUDA-Volta-FA-one-heads-per-tile-rule-for-kernel-sel.patch
+ccc6ffca88aa0e7295e12660ec0308589cd381bd63ec9cfba4ab2b70c1b1411a  0002-CUDA-Volta-FA-pad-non-power-of-two-GQA-ratios-for-sm.patch
+09ae80b50d7258f4aabea4380bb28dd2a27488578e9839936e4400f9a4829ecf  0003-CUDA-Volta-FA-configs-for-D-256-with-ncols-32-and-64.patch
+440160c57aeab6ea39e9292ec251a7b82064326f532fc1c2c494cf24a82ba4ba  0004-CUDA-Volta-FA-use-the-vector-kernel-for-single-token.patch
+e26082b2aa3483f3c8767402d2b09064d55273e6900ef190cd80ea42bcf42548  0005-CUDA-fewer-idle-threads-when-converting-short-non-co.patch
+201c424c5d722c76c7f6e9766afd8a6bd575a923130434d4f0d95fd3bb3e8b8e  0006-CUDA-vectorized-dequantization-of-non-contiguous-q4_.patch
+0d3376239ec5fbd043273081dc5b94921600a43f28b12b18feaa01c28d2f3cda  0007-CUDA-FA-vector-kernel-pack-the-Q-heads-of-a-K-V-head.patch
