@@ -1,9 +1,10 @@
 # P-9 design: small-batch quantised matmul on Volta tensor cores
 
-Status: **design; Phase 0 done on a V100** (2026-10-11): upstream baseline per shape, and the weight-layout
-microbenchmark that settles D3 (native GGUF layout with shared-memory staging; no weight repacking). Phase 1 (the
-kernel) not started. Data: `docs/research/qwen-smallbatch-and-vecpack-heads-v100-2026-10-11.md`,
-`bench/results/p9-mmbase-v100-*`, `bench/results/p9-qload-v100-*`, `bench/results/p9-qload2-v100-*`.
+Status: **Phase 1 done for Q4_K, Q5_K and IQ4_XS** (patch `third_party/patches/0008-*.patch`, harness variant `qmm`;
+measured on a V100 2026-10-11, section "Phase 1 result" below): Qwen3.8-27B +21.6% / +21.8% at 8 / 16 tokens end to
+end, unchanged at 1–4 tokens; per matmul 1.12–1.72x at 8 tokens and 1.48–1.67x at 12–16. MUL_MAT 2549/2549 on sm_70.
+Not done yet: Q6_K, Q8_0 (Llama), perplexity, generic gate+up pairing. Phase 0 data: `bench/results/p9-mmbase-v100-*`,
+`p9-qload-v100-*`, `p9-qload2-v100-*`.
 Owner decision points are marked **Decision**.
 
 ## Problem (measured)
@@ -186,6 +187,51 @@ needs a generic pairing rule (same src1, both routed), not graph edits.
 | 1 | kernel for Q5_K + Q4_K, then IQ4_XS and Q6_K, at 2–16 tokens, native layout with double-buffered shared-memory staging, as an upstream patch (one new file + a routing branch in `ggml_cuda_mul_mat`); `test-backend-ops` MUL_MAT cases for n = 2..16 on the Qwen shapes plus odd N/K and non-finite activations; static check (0 spill) | per shape ≥ 2× upstream at 16 tokens and ≥ 1.0× at 2–8; ≥ 85% of the (b) microbenchmark rate on the ffn shapes; Qwen pp8/pp16 at depth 0 ≥ +50% end to end; perplexity within noise of upstream; no change at n = 1 and n ≥ 17 |
 | 2 | Q8_0 (Llama: 2.1× upstream headroom at 16 tokens), remaining types; generic gate+up pairing (same src1); 1 token if it beats MMVQ | Llama pp8/pp16 gain, no 1-token loss |
 | 3 | only if Phase 1 misses the 85% rate: repacked layout (b) with a CUDA repacked-weight buffer type and the llama.cpp buffer-type order change | owner decision on upstreaming a ggml/llama change |
+
+## Phase 1 result (2026-10-11, V100)
+
+Patch `0008` adds `ggml/src/ggml-cuda/mmq-volta.cu`: one kernel template for Q4_K, Q5_K and IQ4_XS (D1–D7 as
+designed, layout (a')), a small activation-preparation kernel, and a routing branch in `ggml_cuda_mul_mat`
+(Volta, 5–16 tokens, K % 256 == 0, N % 64 == 0, contiguous 2-D weights; `GGML_CUDA_NO_MMQ_VOLTA` turns it off).
+All instances 0 spill, 163–224 registers. Every experiment below used one build with development switches (removed
+from the patch) and the upstream path in the same binary as the baseline, interleaved; data in
+`bench/results/p9-perf-v1-*`, `p9-sweep1..7-*`, `p9-e2e1/2-*`.
+
+**How it got there** (GB/s on the Qwen ffn shapes, 2–8 tokens / 16 tokens):
+
+| step | change | Q4_K/Q5_K GB/s | finding |
+| --- | --- | --- | --- |
+| v1 | 8 warps split K over one 32-row tile; B fragments loaded from global memory | 340–440 / 250–355 | correct first time (261/261), but slower than upstream MMVQ at 2–4 tokens |
+| – | launch-bounds / warps-per-block sweep | ±10% | not occupancy |
+| – | v1 with the activation loads removed (wrong results, timing only) | 510–550 / 437–497 | the 32 global B loads per superblock and warp cost 25–35% |
+| v2 | warps split rows; the block shares a superblock's activations in shared memory (padded, conflict-free); K split over blocks with a deterministic last-block reduction | 468–497 / 373–401 | too few blocks (one 4-warp block per SM) collapses to ~305: target ~4 blocks per SM |
+| v2 + prefetch | next superblock's weights and activations loaded into registers while the current one is computed | 480–547 / 381–416 | kept |
+| v3 | activation preparation fused into the kernel (F32 read, converted per block) | ≤ v2, 10% slower at 16 tokens | rejected: twice the activation bytes per block, more registers |
+
+**Final kernel vs the current path** (`p9-sweep7`, 2 interleaved rounds; upstream GB/s → P-9 GB/s):
+
+| type, shape (N×K) | 4 tokens | 8 | 12 | 16 |
+| --- | --- | --- | --- | --- |
+| Q4_K 17408×5120 / 5120×17408 | upstream route | 1.32× / 1.40× (434 / 449) | 1.64× / 1.67× | 1.56× / 1.60× (385 / 396) |
+| Q5_K | upstream route | 1.54× / 1.72× (494 / 528) | 1.61× / 1.59× | 1.56× / 1.54× (407 / 411) |
+| IQ4_XS | upstream route | 1.12× / 1.34× (392 / 413) | 1.53× / 1.59× | 1.48× / 1.54× (345 / 344) |
+
+At 2–4 tokens MMVQ streams at 610–675 GB/s, faster than this kernel (≈480–550), so routing starts at 5 tokens
+(an earlier build routed from 2 tokens: Qwen −19% at 2 tokens, −6% at 4).
+
+**End to end** (`p9-e2e2`, Qwen3.8-27B-UD-Q4_K_XL, llama-bench depth 0, 2 rounds × 5 reps, first repetition of each
+process dropped; same binary with `GGML_CUDA_NO_MMQ_VOLTA=1` as the baseline): 1 / 2 / 4 tokens 0.0%,
+**8 tokens 133.5 → 162.4 t/s (+21.6%), 16 tokens 206.9 → 251.9 t/s (+21.8%)**. The fork's QPN reaches +85–89% on
+the same steps; the gap is Q6_K (10% of the bytes, still on MMQ), the lower streaming rate of the native layout
+(≈400–530 GB/s vs QPN's ≈500 on its repacked layout at 16 tokens), and QPN's grouped gate+up launches.
+
+**Correctness**: MUL_MAT 2549/2549 on sm_70 (2444 existing + 105 new: Q4_K/Q5_K/IQ4_XS × n = 2, 5, 7, 8, 9, 15, 16 ×
+N 64/96/128/192/256 × K 256/512/2304/5120, covering 2- and 4-tile blocks, split and unsplit K, and the fallback
+shapes). The new kernel was confirmed to run in the tests with nsys. Perplexity: not measured.
+
+**Next** (Phase 2): Q8_0 (Llama-3.1-8B, 2.2× headroom at 16 tokens; 8 blocks = 272 bytes = 17 16-byte units fit the
+same staging), Q6_K (210-byte blocks need sub-16-byte staging), perplexity on both models, 2–4 tokens (needs a
+faster streaming path than shared-memory staging, i.e. (b)), and pairing matmuls that share an input.
 
 ## Upstreaming
 

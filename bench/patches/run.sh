@@ -15,17 +15,18 @@
 #   conv      0001-0005  K/V-to-F16 conversion: several short rows per block                          P-8
 #   conv8     0001-0006  vectorised q4_0/q8_0 conversion (8 values per thread)                        P-8
 #   vecpack   0001-0007  VEC packs 2/4 Q heads per block for single-token decode with quantised K     P-8
-# Designs: docs/design/P6-small-batch-gqa.md, docs/design/P8-quantised-kv-decode.md, docs/design/P8-change4-packed-vec.md.
+#   qmm       0001-0008  Volta tensor-core matmul for Q4_K/Q5_K/IQ4_XS weights at 5-16 tokens         P-9
+# Designs: docs/design/P6-small-batch-gqa.md, docs/design/P8-quantised-kv-decode.md, docs/design/P8-change4-packed-vec.md, docs/design/P9-small-batch-qmatmul.md.
 # Results: bench/results/patches-<stamp>/ (summary.md: kernel table, llama-bench tables, microbench).
 set -euo pipefail
 cd "$(dirname "$0")/../.." || exit 2
 ROOT=$PWD
 LLAMA_SRC=${LLAMA_SRC:-$ROOT/third_party/llama.cpp}
 WORK=${WORK:-$ROOT/third_party/patches-ab}
-VARIANTS=${VARIANTS:-"upstream fix p6 p6cfg qkv conv conv8 vecpack"}
+VARIANTS=${VARIANTS:-"upstream fix p6 p6cfg qkv conv conv8 vecpack qmm"}
 LB_P6_VARIANTS=${LB_P6_VARIANTS:-"upstream p6 p6cfg conv8"}   # llama-bench small batches at depth (f16 KV)
 LB_QKV_VARIANTS=${LB_QKV_VARIANTS:-"upstream p6cfg qkv conv8 vecpack"} # llama-bench quantised-KV decode + pp8
-MULMAT_VARIANTS=${MULMAT_VARIANTS:-"upstream vecpack"}           # MUL_MAT correctness (0005/0006 touch its conversions)
+MULMAT_VARIANTS=${MULMAT_VARIANTS:-"upstream qmm"}           # MUL_MAT correctness (0005/0006 touch its conversions)
 STEPS=${STEPS:-"micro build test perf lb"}                     # build is incremental after the first run
 ROUNDS=${ROUNDS:-3}
 LB_ROUNDS=${LB_ROUNDS:-2}
@@ -46,7 +47,7 @@ ver=$(nvcc --version | sed -n 's/.*release \([0-9.]*\),.*/\1/p')
 
 npatch() {
     case $1 in
-        upstream) echo 0 ;; fix) echo 1 ;; p6) echo 2 ;; p6cfg) echo 3 ;; qkv) echo 4 ;; conv) echo 5 ;; conv8) echo 6 ;; vecpack) echo 7 ;;
+        upstream) echo 0 ;; fix) echo 1 ;; p6) echo 2 ;; p6cfg) echo 3 ;; qkv) echo 4 ;; conv) echo 5 ;; conv8) echo 6 ;; vecpack) echo 7 ;; qmm) echo 8 ;;
         *) echo "unknown variant $1" >&2; return 2 ;;
     esac
 }
