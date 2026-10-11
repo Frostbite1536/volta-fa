@@ -1,0 +1,16 @@
+# Synthetic GGUF tensor dump, not benchmark data.
+# Q4_K 144/256: N=4 -> 576 B each, N=8 -> 1152 B; output -> 576 B.
+# Q4_K total: 5120 elements, 2880 B. F16: 128 elements, 256 B.
+# Known total incl. output: 3136 B; excl. output: 2560 B.
+* Dumping 11 tensor(s)
+      1:        256 |   256,     1,     1,     1 | F32     | blk.0.attn_norm.weight
+      2:       1024 |   256,     4,     1,     1 | Q8_0    | token_embd.weight
+      3:       1024 |   256,     4,     1,     1 | Q4_K    | blk.0.ffn_up.weight
+      4:       1024 |   256,     4,     1,     1 | Q4_K    | blk.1.ffn_up.weight
+      5:       2048 |   256,     8,     1,     1 | Q4_K    | blk.0.ffn_down.weight
+      6:       1024 |   256,     4,     1,     1 | Q4_K    | output.weight
+      7:        128 |    32,     4,     1,     1 | F16     | blk.0.attn_q.weight
+      8:        128 |    32,     4,     1,     1 | MYSTERY | blk.0.attn_v.weight
+      9:        128 |    32,     4,     1,     1 | F32     | blk.0.matrix_norm.weight
+     10:       2048 |   256,     4,     2,     1 | Q4_K    | blk.0.experts.weight
+     11:       2048 |   256,     4,     1,     2 | Q4_K    | blk.0.batched.weight

@@ -1,0 +1,52 @@
+nvcc warning : Support for offline compilation for architectures prior to '<compute/sm/lto>_75' will be removed in a future release (Use -Wno-deprecated-gpu-targets to suppress warning).
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10layout_mmaILb1EEvPKhmii7__half2S2_jjPf' for 'sm_70'
+ptxas info    : Function properties for _Z10layout_mmaILb1EEvPKhmii7__half2S2_jjPf
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers, 400 bytes cmem[0]
+ptxas info    : Compile time = 22.849 ms
+ptxas info    : Compiling entry function '_Z10layout_mmaILb0EEvPKhmii7__half2S2_jjPf' for 'sm_70'
+ptxas info    : Function properties for _Z10layout_mmaILb0EEvPKhmii7__half2S2_jjPf
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers, 400 bytes cmem[0]
+ptxas info    : Compile time = 21.922 ms
+ptxas info    : Compiling entry function '_Z6nativeILi2EEvPKhmiiPj' for 'sm_70'
+ptxas info    : Function properties for _Z6nativeILi2EEvPKhmiiPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers, 384 bytes cmem[0]
+ptxas info    : Compile time = 20.173 ms
+ptxas info    : Compiling entry function '_Z6nativeILi4EEvPKhmiiPj' for 'sm_70'
+ptxas info    : Function properties for _Z6nativeILi4EEvPKhmiiPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers, 384 bytes cmem[0]
+ptxas info    : Compile time = 19.909 ms
+ptxas info    : Compiling entry function '_Z6nativeILi8EEvPKhmiiPj' for 'sm_70'
+ptxas info    : Function properties for _Z6nativeILi8EEvPKhmiiPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 32 registers, used 0 barriers, 384 bytes cmem[0]
+ptxas info    : Compile time = 20.440 ms
+ptxas info    : Compiling entry function '_Z6nativeILi16EEvPKhmiiPj' for 'sm_70'
+ptxas info    : Function properties for _Z6nativeILi16EEvPKhmiiPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 384 bytes cmem[0]
+ptxas info    : Compile time = 23.853 ms
+ptxas info    : Compiling entry function '_Z15native_smem_mmaPKhmii7__half2S1_jjPf' for 'sm_70'
+ptxas info    : Function properties for _Z15native_smem_mmaPKhmii7__half2S1_jjPf
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 48 registers, used 0 barriers, 400 bytes cmem[0]
+ptxas info    : Compile time = 29.620 ms
+ptxas info    : Compiling entry function '_Z11native_smemPKhmiiPj' for 'sm_70'
+ptxas info    : Function properties for _Z11native_smemPKhmiiPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 42 registers, used 0 barriers, 384 bytes cmem[0]
+ptxas info    : Compile time = 27.045 ms
+ptxas info    : Compiling entry function '_Z8repackedPKhmiiPj' for 'sm_70'
+ptxas info    : Function properties for _Z8repackedPKhmiiPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 384 bytes cmem[0]
+ptxas info    : Compile time = 23.361 ms
+ptxas info    : Compiling entry function '_Z6streamPKhmPj' for 'sm_70'
+ptxas info    : Function properties for _Z6streamPKhmPj
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 20 registers, used 0 barriers, 376 bytes cmem[0]
+ptxas info    : Compile time = 2.479 ms

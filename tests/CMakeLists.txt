@@ -35,4 +35,35 @@ if(Python3_Interpreter_FOUND)
             ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/lb-r1.jsonl,${CMAKE_CURRENT_SOURCE_DIR}/fixtures/lb-r2.jsonl
             ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/lb-r3.jsonl --labels a,b)
   set_tests_properties(analyze_lb_rounds PROPERTIES PASS_REGULAR_EXPRESSION "105\\.00 \\(100\\.00–110\\.00, n=2\\) \\| 130\\.00 ± 1\\.00 \\| \\+23\\.8%")
+
+  # Synthetic QMM fixtures; arithmetic is documented in qmm-dump.txt and qmm-r1.sql.
+  set(qmm_script ${PROJECT_SOURCE_DIR}/bin/qmatmul-table.py)
+  set(qmm_dump ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/qmm-dump.txt)
+  set(qmm_r1 ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/qmm-r1.sql)
+  set(qmm_rounds ${qmm_r1},${CMAKE_CURRENT_SOURCE_DIR}/fixtures/qmm-r2.sql)
+  add_test(NAME qmm_shapes COMMAND ${Python3_EXECUTABLE} ${qmm_script} shapes ${qmm_dump})
+  # Two layer weights: 2*576 B = 1152 B = 0.001099 MiB; total known bytes=3136.
+  set_tests_properties(qmm_shapes PROPERTIES PASS_REGULAR_EXPRESSION
+    "ffn_up.weight \\| Q4_K \\| 256 \\| 4 \\| 2 \\| 0\\.001099.*Q4_K \\| 5120 \\| 0\\.002747.*Total matmul weights: 3136 bytes.*output.weight: 576 bytes.*unknown type: MYSTERY")
+  add_test(NAME qmm_perf_rounds COMMAND ${Python3_EXECUTABLE} ${qmm_script} perf ${qmm_rounds} --labels rounds)
+  # 576/6/1000=0.096 GB/s; 2304/12/1000=0.192 GB/s; max spread=(8-4)/6.
+  set_tests_properties(qmm_perf_rounds PROPERTIES PASS_REGULAR_EXPRESSION
+    "Q4_K \\| 4 \\| 256 \\| 6\\.000 \\| 12\\.000 \\| 24\\.000.*Q4_K \\| 16 \\| 256 \\| 12\\.000 \\| 24\\.000 \\| 48\\.000.*Q4_K \\| 4 \\| 256 \\| 0\\.096 \\| 0\\.048 \\| 0\\.024.*Q4_K \\| 16 \\| 256 \\| 0\\.192 \\| 0\\.096 \\| 0\\.048.*Max round spread .*66\\.67%")
+  add_test(NAME qmm_perf_groups
+    COMMAND ${Python3_EXECUTABLE} ${qmm_script} perf ${qmm_r1} ${qmm_rounds} --labels single,rounds)
+  set_tests_properties(qmm_perf_groups PROPERTIES PASS_REGULAR_EXPRESSION
+    "### single.*Q4_K \\| 4 \\| 256 \\| 4\\.000 \\| 8\\.000 \\| 24\\.000.*### rounds.*Q4_K \\| 4 \\| 256 \\| 6\\.000 \\| 12\\.000 \\| 24\\.000")
+  add_test(NAME qmm_step COMMAND ${Python3_EXECUTABLE} ${qmm_script} step ${qmm_dump} ${qmm_rounds} --tokens 1,2,4,8,16)
+  # Median bandwidth at n=1 is (0.096+0.192)/2=0.144 GB/s -> 1152/144=8 us.
+  # Exact time=2*6=12 us; total=20 us; coverage=1152/2560=45%. n=2,4 scale.
+  set_tests_properties(qmm_step PROPERTIES PASS_REGULAR_EXPRESSION
+    "output.weight is excluded.*1 \\| 12\\.000 \\| 8\\.000 \\| 20\\.000 \\| 1152/2560 \\| 45\\.00% \\| 2.*2 \\| 24\\.000 \\| 16\\.000 \\| 40\\.000.*4 \\| 48\\.000 \\| 32\\.000 \\| 80\\.000.*8 \\| 0\\.000 \\| 0\\.000 \\| 0\\.000 \\| 0/2560 \\| 0\\.00% \\| 5.*16 \\| 0\\.000 \\| 0\\.000 \\| 0\\.000 \\| 0/2560 \\| 0\\.00% \\| 5")
+  add_test(NAME qmm_step_missing COMMAND ${Python3_EXECUTABLE} ${qmm_script} step ${qmm_dump} ${qmm_rounds} --tokens 1)
+  set_tests_properties(qmm_step_missing PROPERTIES PASS_REGULAR_EXPRESSION
+    "1 \\| F16 \\| 4 \\| 32 \\| 1 \\| not measured.*1 \\| MYSTERY \\| 4 \\| 32 \\| 1 \\| not measured.*1 \\| Q4_K \\| 8 \\| 256 \\| 1 \\| estimated \\| 0\\.144 \\| 8\\.000")
+  add_test(NAME qmm_step_with_output
+    COMMAND ${Python3_EXECUTABLE} ${qmm_script} step ${qmm_dump} ${qmm_rounds} --tokens 1 --with-output)
+  # Including output adds 6 us and 576 exact bytes: 1728/3136=55.1020408%.
+  set_tests_properties(qmm_step_with_output PROPERTIES PASS_REGULAR_EXPRESSION
+    "output.weight is included.*1 \\| 18\\.000 \\| 8\\.000 \\| 26\\.000 \\| 1728/3136 \\| 55\\.10% \\| 2")
 endif()
