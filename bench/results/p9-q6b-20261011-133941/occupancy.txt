@@ -1,0 +1,4 @@
+mmq_volta type 13 ntt 1 NR 2: 4 blocks/SM
+mmq_volta type 13 ntt 2 NR 4: 2 blocks/SM
+mmq_volta type 14 ntt 1 NR 2: 4 blocks/SM
+mmq_volta type 14 ntt 2 NR 4: 2 blocks/SM

@@ -15,7 +15,7 @@
 #   conv      0001-0005  K/V-to-F16 conversion: several short rows per block                          P-8
 #   conv8     0001-0006  vectorised q4_0/q8_0 conversion (8 values per thread)                        P-8
 #   vecpack   0001-0007  VEC packs 2/4 Q heads per block for single-token decode with quantised K     P-8
-#   qmm       0001-0008  Volta tensor-core matmul for Q4_K/Q5_K/IQ4_XS weights at 5-16 tokens         P-9
+#   qmm       0001-0008  Volta tensor-core matmul for Q4_K/Q5_K/Q6_K/IQ4_XS/Q8_0 at 5-16 tokens      P-9
 # Designs: docs/design/P6-small-batch-gqa.md, docs/design/P8-quantised-kv-decode.md, docs/design/P8-change4-packed-vec.md, docs/design/P9-small-batch-qmatmul.md.
 # Results: bench/results/patches-<stamp>/ (summary.md: kernel table, llama-bench tables, microbench).
 set -euo pipefail

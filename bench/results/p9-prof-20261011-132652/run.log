@@ -1,0 +1,5 @@
+[13:26:52] nsys p9 pp16 135 MHz, 34, 23.88 W
+[13:27:01] nsys p9 pp8 1380 MHz, 36, 42.83 W
+[13:27:09] nsys up pp16 1380 MHz, 36, 42.34 W
+[13:27:18] nsys up pp8 1380 MHz, 36, 41.57 W
+[13:27:26] done RESULTS /root/volta-fa/bench/results/p9-prof-20261011-132652 1380 MHz, 37, 41.57 W

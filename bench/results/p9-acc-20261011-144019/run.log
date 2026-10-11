@@ -1,0 +1,9 @@
+[14:40:19] Meta-Llama-3.1-8B-Instruct-Q8_0 ref 1380 MHz, 43
+[14:40:59] Meta-Llama-3.1-8B-Instruct-Q8_0 up 1380 MHz, 50
+[14:41:10] Meta-Llama-3.1-8B-Instruct-Q8_0 p9 1380 MHz, 49
+[14:41:21] Meta-Llama-3.1-8B-Instruct-Q8_0 p9all 1380 MHz, 48
+[14:41:31] Qwen3.8-27B-UD-Q4_K_XL ref 1380 MHz, 47
+[14:43:50] Qwen3.8-27B-UD-Q4_K_XL up 1380 MHz, 51
+[14:44:19] Qwen3.8-27B-UD-Q4_K_XL p9 1380 MHz, 50
+[14:44:44] Qwen3.8-27B-UD-Q4_K_XL p9all 1380 MHz, 49
+[14:45:10] done RESULTS /root/volta-fa/bench/results/p9-acc-20261011-144019 1380 MHz, 48
