@@ -113,6 +113,9 @@ void staged_sizes() {
     link.copy_async(nullptr, nullptr, 0, r.stream);
     const auto data = random_bytes(maximum, 7);
     VFA_CUDA_CHECK(cudaMemcpy(r.src, data.data(), maximum, cudaMemcpyHostToDevice));
+    // A pageable host-to-device cudaMemcpy may return before the DMA completes, and the copies below run on
+    // non-blocking streams that do not order behind it.
+    VFA_CUDA_CHECK(cudaDeviceSynchronize());
     for (std::size_t n : {std::size_t{0}, std::size_t{1}, std::size_t{4095}, std::size_t{4096},
                           std::size_t{4097}, std::size_t{14336}, maximum}) {
         // Poison the entire allocation and check the guard after each tail too.
@@ -155,6 +158,9 @@ void buffer_reuse() {
     Resources r(0, total);
     const auto data = random_bytes(total, 29);
     VFA_CUDA_CHECK(cudaMemcpy(r.src, data.data(), total, cudaMemcpyHostToDevice));
+    // A pageable host-to-device cudaMemcpy may return before the DMA completes, and the copies below run on
+    // non-blocking streams that do not order behind it.
+    VFA_CUDA_CHECK(cudaDeviceSynchronize());
     VFA_CUDA_CHECK(cudaMemsetAsync(r.dst, 0, total, r.stream));
     PeerLink link(0, 0, 257);
     CHECK(link.path() == Path::Staged);
@@ -183,6 +189,9 @@ void peer() {
             const auto data = random_bytes(n, 41 + src);
             VFA_CUDA_CHECK(cudaSetDevice(src));
             VFA_CUDA_CHECK(cudaMemcpy(source.src, data.data(), n, cudaMemcpyHostToDevice));
+            // A pageable host-to-device cudaMemcpy may return before the DMA completes, and the copies below run on
+            // non-blocking streams that do not order behind it.
+            VFA_CUDA_CHECK(cudaDeviceSynchronize());
             VFA_CUDA_CHECK(cudaSetDevice(dst));
             {
                 PeerLink link(src, dst, 4096);
