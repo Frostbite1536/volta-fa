@@ -1,37 +1,3 @@
-From 12f8519a1956fb9bc84a5e5535b57f140cd4db68 Mon Sep 17 00:00:00 2001
-From: Frostbite1536 <125112776+Frostbite1536@users.noreply.github.com>
-Date: Sun, 11 Oct 2026 02:25:15 -0500
-Subject: [PATCH 8/8] CUDA: Volta tensor-core matmul for Q4_K/Q5_K/IQ4_XS weights
- at 5-16 tokens
-
-On Volta, quantized matmuls at small batches use MMVQ (which redoes the dequantization per column) up to 5-8
-tokens and then MMQ, whose Volta path is dp4a (no int8 tensor cores). Both fall well below the weight-read rate
-at 5-16 tokens (V100: 205-365 GB/s at 9-16 tokens). This adds a kernel that streams the weights once in their
-GGUF layout and decodes them into FP16 mma.sync.m8n8k4 fragments:
-
-- A warp stages one superblock of its 32 rows into shared memory with coalesced loads and decodes row = lane;
-  codes become FP16 by or-ing 0x6400 into masked nibbles plus one HFMA2 per pair (exact for Q4_K/Q5_K); IQ4_XS
-  codebook values are looked up with byte permutes. The activations are converted to FP16 (as the cuBLAS path
-  for quantized weights does) in the order the masks produce, so no shuffles are needed; Q4_K/Q5_K mins are one
-  extra call against the sub-block means.
-- Blocks of 2-4 warps share the activations of a superblock in shared memory; the next superblock is loaded
-  into registers while the current one is computed. K is split over blocks with a deterministic last-block
-  reduction.
-- Routed for Volta, 5-16 tokens, K % 256 == 0, N % 64 == 0, contiguous 2-D weights; GGML_CUDA_NO_MMQ_VOLTA
-  disables it.
-
-V100, per matmul vs the current path: 1.12-1.72x at 8 tokens, 1.48-1.67x at 12-16 tokens on the Qwen3.8-27B
-shapes; Qwen3.8-27B-UD-Q4_K_XL end to end +21.6% / +21.8% at 8 / 16 tokens, unchanged at 1-4 tokens.
-Tests: 105 MUL_MAT cases (3 types, n = 2..16, 1/2/4-tile blocks, split and unsplit K, fallback shapes).
----
- ggml/src/ggml-cuda/ggml-cuda.cu  |   5 +
- ggml/src/ggml-cuda/mmq-volta.cu  | 517 +++++++++++++++++++++++++++++++
- ggml/src/ggml-cuda/mmq-volta.cuh |  11 +
- tests/test-backend-ops.cpp       |  11 +
- 4 files changed, 544 insertions(+)
- create mode 100644 ggml/src/ggml-cuda/mmq-volta.cu
- create mode 100644 ggml/src/ggml-cuda/mmq-volta.cuh
-
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
 index 957908f65..fa8b2adcf 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
@@ -57,10 +23,10 @@ index 957908f65..fa8b2adcf 100644
          return;
 diff --git a/ggml/src/ggml-cuda/mmq-volta.cu b/ggml/src/ggml-cuda/mmq-volta.cu
 new file mode 100644
-index 000000000..d361c49c7
+index 000000000..236387d31
 --- /dev/null
 +++ b/ggml/src/ggml-cuda/mmq-volta.cu
-@@ -0,0 +1,517 @@
+@@ -0,0 +1,599 @@
 +#include "mmq-volta.cuh"
 +
 +// Quantized weights x F32 activations for MMQ_VOLTA_MIN_TOKENS..16 tokens on Volta, with FP16 tensor cores.
@@ -98,11 +64,15 @@ index 000000000..d361c49c7
 +#define MMQ_VOLTA_ACT_STRIDE (QK_K + 8) // halves per token row in shared memory: +16 B so 8 tokens hit distinct banks
 +
 +// unit: bytes per staging unit (the block size must be a multiple; rows are unit-aligned), units: per superblock,
-+// qs0: first unit of the codes, mins: Q4_K/Q5_K-style mins term.
++// qs0: first unit of the codes, mins: Q4_K/Q5_K-style mins term, prefetch_w: weights of the next superblock are loaded
++// into registers during the current one.
 +template <ggml_type type> struct mmq_volta_type;
-+template <> struct mmq_volta_type<GGML_TYPE_Q4_K>   { static constexpr int unit = 16; static constexpr int units =  9; static constexpr int qs0 = 1; static constexpr bool mins = true;  };
-+template <> struct mmq_volta_type<GGML_TYPE_Q5_K>   { static constexpr int unit = 16; static constexpr int units = 11; static constexpr int qs0 = 3; static constexpr bool mins = true;  };
-+template <> struct mmq_volta_type<GGML_TYPE_IQ4_XS> { static constexpr int unit =  8; static constexpr int units = 17; static constexpr int qs0 = 1; static constexpr bool mins = false; };
++template <> struct mmq_volta_type<GGML_TYPE_Q4_K>   { static constexpr int unit = 16; static constexpr int units =  9; static constexpr int qs0 = 1; static constexpr bool mins = true;  static constexpr bool prefetch_w = true;  };
++template <> struct mmq_volta_type<GGML_TYPE_Q5_K>   { static constexpr int unit = 16; static constexpr int units = 11; static constexpr int qs0 = 3; static constexpr bool mins = true;  static constexpr bool prefetch_w = true;  };
++template <> struct mmq_volta_type<GGML_TYPE_IQ4_XS> { static constexpr int unit =  8; static constexpr int units = 17; static constexpr int qs0 = 1; static constexpr bool mins = false; static constexpr bool prefetch_w = true;  };
++// Q8_0: 8 blocks of 32 (272 bytes = 17 16-byte units) are treated as one superblock. Its weights are not prefetched
++// into registers (68 more registers would spill at 16 tokens); they are copied to shared memory in the step itself.
++template <> struct mmq_volta_type<GGML_TYPE_Q8_0>   { static constexpr int unit = 16; static constexpr int units = 17; static constexpr int qs0 = 0; static constexpr bool mins = false; static constexpr bool prefetch_w = false; };
 +
 +// Position within a superblock of the j-th K value of the A fragments, j = 32*c + 8*w + e (c: 32-value group of
 +// codes, w: 32-bit word, e: slot of the 4 half2 of a call).
@@ -111,7 +81,9 @@ index 000000000..d361c49c7
 +    const int c = j / 32;
 +    const int w = (j % 32) / 8;
 +    const int e = j % 8;
-+    if constexpr (type == GGML_TYPE_IQ4_XS) {
++    if constexpr (type == GGML_TYPE_Q8_0) {
++        return j; // consecutive codes decode to consecutive pairs
++    } else if constexpr (type == GGML_TYPE_IQ4_XS) {
 +        // c = sub-block; word w holds positions 4w..4w+3 (low nibbles) and 16+4w.. (high nibbles); slot pairs are
 +        // (low, high) of bytes 0, 1, 2, 3.
 +        return 32*c + 4*w + (e >> 1) + ((e & 1) ? 16 : 0);
@@ -337,6 +309,59 @@ index 000000000..d361c49c7
 +    mmq_volta_accumulate<ntt, false>(tot, acc, accm, d, 0.0f, lane);
 +}
 +
++// Q8_0: 8 blocks of 32 (d, 32 int8 codes; 34 bytes each, 2-byte aligned) per 272-byte superblock. Block b starts at byte
++// 34*b; its bytes lie in units 34*b/16 .. +2, read as three 16-byte shared-memory loads and realigned with funnel
++// shifts (all offsets are compile-time constants). code + 128 under 0x64 is FP16 1024 + 128 + q; subtracting 1152
++// gives q exactly and one multiplication by d rounds d*q once, as ggml's FP16 dequantization does.
++template <int ntt>
++static __device__ __forceinline__ void mmq_volta_superblock_q8_0(const uint4 * my, const half * bp, const int bstride,
++        float (&tot)[ntt][8]) {
++    float acc[2][ntt][8] = {};
++    const half2 c1152 = __half2half2(__int2half_rn(1152));
++#pragma unroll
++    for (int b = 0; b < 8; ++b) {
++        const int u0 = (34*b) / 16;
++        const int o  = (34*b) % 16; // even
++        const uint4 v0 = my[u0], v1 = my[u0 + 1], v2 = my[u0 + 2];
++        const uint32_t W[12] = { v0.x, v0.y, v0.z, v0.w, v1.x, v1.y, v1.z, v1.w, v2.x, v2.y, v2.z, v2.w };
++        const uint32_t d16 = (W[o/4] >> (8*(o % 4))) & 0xFFFF;
++        const half2 d2 = __half2half2(__ushort_as_half(d16));
++        const int q0 = (o + 2) / 4;
++        const bool aligned = (o + 2) % 4 == 0;
++        uint32_t Q[8];
++#pragma unroll
++        for (int k = 0; k < 8; ++k) {
++            Q[k] = aligned ? W[q0 + k] : __funnelshift_r(W[q0 + k], W[q0 + k + 1], 16);
++        }
++#pragma unroll
++        for (int w = 0; w < 4; ++w) {
++            uint32_t A[4];
++#pragma unroll
++            for (int h = 0; h < 2; ++h) {
++                const uint32_t x = Q[2*w + h] ^ 0x80808080; // bytes q + 128
++                const uint32_t blo = __byte_perm(x, 0x64646464, 0x4140);
++                const uint32_t bhi = __byte_perm(x, 0x64646464, 0x4342);
++                const half2 lo = __hsub2(*reinterpret_cast<const half2 *>(&blo), c1152);
++                const half2 hi = __hsub2(*reinterpret_cast<const half2 *>(&bhi), c1152);
++                const half2 a = __hmul2(lo, d2), c = __hmul2(hi, d2);
++                A[2*h + 0] = *reinterpret_cast<const uint32_t *>(&a);
++                A[2*h + 1] = *reinterpret_cast<const uint32_t *>(&c);
++            }
++#pragma unroll
++            for (int tt = 0; tt < ntt; ++tt) {
++                mmq_volta_mma(acc[w & 1][tt], A, *reinterpret_cast<const uint4 *>(bp + tt*bstride + 32*b + 8*w));
++            }
++        }
++    }
++#pragma unroll
++    for (int tt = 0; tt < ntt; ++tt) {
++#pragma unroll
++        for (int e = 0; e < 8; ++e) {
++            tot[tt][e] += acc[0][tt][e] + acc[1][tt][e];
++        }
++    }
++}
++
 +// Write a warp's sums for its 32-row tile: directly if K is not split (gridDim.y == 1), otherwise to ws, and the last
 +// block of the row group (counter) adds the partials of all blocks in a fixed order.
 +template <int ntt>
@@ -435,17 +460,19 @@ index 000000000..d361c49c7
 +
 +    float tot[ntt][8] = {};
 +
-+    unit_t wreg[U];
++    unit_t wreg[traits::prefetch_w ? U : 1];
 +    uint4  areg[AU];
 +    uint4  mreg = make_uint4(0, 0, 0, 0);
 +    auto issue = [&](const int sb) {
 +        // consecutive lanes load consecutive units of a row; stored as [row][unit] (U odd: conflict-free reads)
++        if constexpr (traits::prefetch_w) {
 +#pragma unroll
-+        for (int i = 0; i < U; ++i) {
-+            const int f = WARP_SIZE*i + lane;
-+            const int r = f / U;
-+            const int u = f - r*U;
-+            wreg[i] = mmq_volta_ldg<unit_t>(rows + r*row_pitch + (int64_t(sb)*U + u)*traits::unit);
++            for (int i = 0; i < U; ++i) {
++                const int f = WARP_SIZE*i + lane;
++                const int r = f / U;
++                const int u = f - r*U;
++                wreg[i] = mmq_volta_ldg<unit_t>(rows + r*row_pitch + (int64_t(sb)*U + u)*traits::unit);
++            }
 +        }
 +#pragma unroll
 +        for (int a = 0; a < AU; ++a) {
@@ -464,7 +491,14 @@ index 000000000..d361c49c7
 +        __syncthreads(); // the previous superblock is no longer read
 +#pragma unroll
 +        for (int i = 0; i < U; ++i) {
-+            stage[WARP_SIZE*i + lane] = wreg[i];
++            if constexpr (traits::prefetch_w) {
++                stage[WARP_SIZE*i + lane] = wreg[i];
++            } else {
++                const int f = WARP_SIZE*i + lane;
++                const int r = f / U;
++                const int u = f - r*U;
++                stage[f] = mmq_volta_ldg<unit_t>(rows + r*row_pitch + (int64_t(sb)*U + u)*traits::unit);
++            }
 +        }
 +#pragma unroll
 +        for (int a = 0; a < AU; ++a) {
@@ -478,7 +512,9 @@ index 000000000..d361c49c7
 +            issue(sb + 1);
 +        }
 +        __syncthreads();
-+        if constexpr (type == GGML_TYPE_IQ4_XS) {
++        if constexpr (type == GGML_TYPE_Q8_0) {
++            mmq_volta_superblock_q8_0<ntt>(stage + lane*U, act + tb*MMQ_VOLTA_ACT_STRIDE, 8*MMQ_VOLTA_ACT_STRIDE, tot);
++        } else if constexpr (type == GGML_TYPE_IQ4_XS) {
 +            mmq_volta_superblock_iq4_xs<ntt>(stage + lane*U, act + tb*MMQ_VOLTA_ACT_STRIDE, 8*MMQ_VOLTA_ACT_STRIDE, lane, tot);
 +        } else {
 +            mmq_volta_superblock<type, ntt>(stage + lane*U, act + tb*MMQ_VOLTA_ACT_STRIDE, 8*MMQ_VOLTA_ACT_STRIDE,
@@ -498,11 +534,22 @@ index 000000000..d361c49c7
 +    if (disabled || cc != GGML_CUDA_CC_VOLTA || ggml_cuda_highest_compiled_arch(cc) != GGML_CUDA_CC_VOLTA) {
 +        return false;
 +    }
-+    if (src0->type != GGML_TYPE_Q4_K && src0->type != GGML_TYPE_Q5_K && src0->type != GGML_TYPE_IQ4_XS) {
++    if (src0->type != GGML_TYPE_Q4_K && src0->type != GGML_TYPE_Q5_K && src0->type != GGML_TYPE_IQ4_XS &&
++            src0->type != GGML_TYPE_Q8_0) {
 +        return false;
 +    }
++    static const int min_env = getenv("GGML_CUDA_MMQ_VOLTA_MIN") ? atoi(getenv("GGML_CUDA_MMQ_VOLTA_MIN")) : 0; // dev switch
 +    const int64_t n = src1->ne[1];
-+    return n >= MMQ_VOLTA_MIN_TOKENS && n <= MMQ_VOLTA_MAX_TOKENS &&
++    // MMVQ handles Q8_0 well up to 8 tokens (V100: 530-770 GB/s), and this kernel streams Q8_0 without prefetching the
++    // weights; it is faster from 9 tokens on matrices with N >= 4096 (Llama-3.1-8B shapes: 1.14-1.28x).
++    int min_tokens = MMQ_VOLTA_MIN_TOKENS;
++    if (src0->type == GGML_TYPE_Q8_0) {
++        if (src0->ne[1] < 4096) {
++            return false;
++        }
++        min_tokens = 9;
++    }
++    return n >= (min_env > 0 ? min_env : min_tokens) && n <= MMQ_VOLTA_MAX_TOKENS &&
 +        src0->ne[0] % QK_K == 0 && src0->ne[1] % (2*WARP_SIZE) == 0 &&
 +        src0->ne[2] == 1 && src0->ne[3] == 1 && src1->ne[2] == 1 && src1->ne[3] == 1 &&
 +        ggml_is_contiguous(src0) && src1->nb[0] == ggml_type_size(src1->type) &&
@@ -575,6 +622,7 @@ index 000000000..d361c49c7
 +        case GGML_TYPE_Q4_K:   mul_mat_q_volta_case<GGML_TYPE_Q4_K>  (ctx, src0, src1, dst); break;
 +        case GGML_TYPE_Q5_K:   mul_mat_q_volta_case<GGML_TYPE_Q5_K>  (ctx, src0, src1, dst); break;
 +        case GGML_TYPE_IQ4_XS: mul_mat_q_volta_case<GGML_TYPE_IQ4_XS>(ctx, src0, src1, dst); break;
++        case GGML_TYPE_Q8_0:   mul_mat_q_volta_case<GGML_TYPE_Q8_0>  (ctx, src0, src1, dst); break;
 +        default: GGML_ABORT("fatal error");
 +    }
 +}
@@ -596,27 +644,28 @@ index 000000000..2e292f4ce
 +
 +void ggml_cuda_mul_mat_q_volta(ggml_backend_cuda_context & ctx, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst);
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 4b9926280..3672f7152 100644
+index 4b9926280..1397d0edb 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -10732,6 +10732,17 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -10732,6 +10732,21 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
      }
  #endif
  
-+    // Q4_K/Q5_K/IQ4_XS at 5..16 tokens use FP16 tensor cores on weights decoded from the GGUF layout on Volta
++    // Q4_K/Q5_K/IQ4_XS/Q8_0 at 5..16 tokens use FP16 tensor cores on weights decoded from the GGUF layout on Volta
 +    // (mmq-volta.cu). N = 64 and 192 (2 row tiles per block), 128 and 256 (2 tiles up to 8 tokens, 4 above); K = 256
 +    // (no K split), 2304, 5120 (split over blocks); 1 or 2 token tiles; n = 2 and N = 96 take the existing paths.
-+    for (ggml_type type_a : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_IQ4_XS }) {
++    for (ggml_type type_a : { GGML_TYPE_Q4_K, GGML_TYPE_Q5_K, GGML_TYPE_IQ4_XS, GGML_TYPE_Q8_0 }) {
 +        for (int n : { 2, 5, 7, 8, 9, 15, 16 }) {
 +            for (auto mk : std::vector<std::pair<int, int>>{ {64, 256}, {192, 2304}, {128, 5120}, {256, 2304}, {96, 512} }) {
 +                test_cases.emplace_back(new test_mul_mat(type_a, GGML_TYPE_F32, mk.first, n, mk.second, {1, 1}, {1, 1}));
 +            }
 +        }
 +    }
++    // Q8_0 uses it from 9 tokens and N >= 4096 only.
++    for (int n : { 8, 9, 16 }) {
++        test_cases.emplace_back(new test_mul_mat(GGML_TYPE_Q8_0, GGML_TYPE_F32, 4096, n, 512, {1, 1}, {1, 1}));
++    }
 +
  #if 1
      for (ggml_type type_a : base_types) {
          for (ggml_type type_b : {GGML_TYPE_F32, GGML_TYPE_F16}) {
--- 
-2.43.0
-

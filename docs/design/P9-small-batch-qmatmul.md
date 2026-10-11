@@ -1,10 +1,10 @@
 # P-9 design: small-batch quantised matmul on Volta tensor cores
 
-Status: **Phase 1 done for Q4_K, Q5_K and IQ4_XS** (patch `third_party/patches/0008-*.patch`, harness variant `qmm`;
-measured on a V100 2026-10-11, section "Phase 1 result" below): Qwen3.8-27B +21.6% / +21.8% at 8 / 16 tokens end to
-end, unchanged at 1–4 tokens; per matmul 1.12–1.72x at 8 tokens and 1.48–1.67x at 12–16. MUL_MAT 2549/2549 on sm_70.
-Not done yet: Q6_K, Q8_0 (Llama), perplexity, generic gate+up pairing. Phase 0 data: `bench/results/p9-mmbase-v100-*`,
-`p9-qload-v100-*`, `p9-qload2-v100-*`.
+Status: **Phases 1 and 2 (part) done: patch `third_party/patches/0008-*.patch`, harness variant `qmm`**, measured on a
+V100 2026-10-11. Q4_K, Q5_K, IQ4_XS and Q8_0 at 5–16 tokens (per-type minimum, N ≥ 4096): Qwen3.8-27B +21.8% / +21.8%
+at 8 / 16 tokens and Llama-3.1-8B +8.5% at 16 tokens end to end, unchanged at 1–4 tokens; perplexity vs the current
+path within noise; MUL_MAT 2540/2540 on sm_70. Not done: Q6_K, 2–4 tokens, small matrices, matmul pairing, FP32-
+reference accuracy. Phase 0 data: `bench/results/p9-mmbase-v100-*`, `p9-qload-v100-*`, `p9-qload2-v100-*`.
 Owner decision points are marked **Decision**.
 
 ## Problem (measured)
@@ -192,7 +192,8 @@ needs a generic pairing rule (same src1, both routed), not graph edits.
 
 Patch `0008` adds `ggml/src/ggml-cuda/mmq-volta.cu`: one kernel template for Q4_K, Q5_K and IQ4_XS (D1–D7 as
 designed, layout (a')), a small activation-preparation kernel, and a routing branch in `ggml_cuda_mul_mat`
-(Volta, 5–16 tokens, K % 256 == 0, N % 64 == 0, contiguous 2-D weights; `GGML_CUDA_NO_MMQ_VOLTA` turns it off).
+(Volta, 5–16 tokens, K % 256 == 0, contiguous 2-D weights; `GGML_CUDA_NO_MMQ_VOLTA` turns it off; the routing was
+tightened in Phase 2, below).
 All instances 0 spill, 163–224 registers. Every experiment below used one build with development switches (removed
 from the patch) and the upstream path in the same binary as the baseline, interleaved; data in
 `bench/results/p9-perf-v1-*`, `p9-sweep1..7-*`, `p9-e2e1/2-*`.
@@ -229,9 +230,45 @@ the same steps; the gap is Q6_K (10% of the bytes, still on MMQ), the lower stre
 N 64/96/128/192/256 × K 256/512/2304/5120, covering 2- and 4-tile blocks, split and unsplit K, and the fallback
 shapes). The new kernel was confirmed to run in the tests with nsys. Perplexity: not measured.
 
-**Next** (Phase 2): Q8_0 (Llama-3.1-8B, 2.2× headroom at 16 tokens; 8 blocks = 272 bytes = 17 16-byte units fit the
-same staging), Q6_K (210-byte blocks need sub-16-byte staging), perplexity on both models, 2–4 tokens (needs a
-faster streaming path than shared-memory staging, i.e. (b)), and pairing matmuls that share an input.
+## Phase 2, first part (2026-10-11, V100): Q8_0, accuracy, routing thresholds
+
+**Q8_0** (Llama-3.1-8B): 8 blocks of 32 (272 bytes = 17 16-byte units) are one superblock; each 34-byte block is read
+with three 16-byte shared-memory loads and realigned with funnel shifts at compile-time offsets; codes + 128 under 0x64
+minus 1152 give q exactly and one HMUL2 by d rounds d*q once, as ggml's FP16 dequantization does. Its weights are not
+prefetched into registers (68 more registers spilled at 16 tokens), so it streams at ≈430–590 GB/s. MMVQ is strong on
+Q8_0 up to 8 tokens (530–770 GB/s), so Q8_0 wins only from 9 tokens on the larger matrices (`p9-q8a-*`, `p9-final-*`):
+
+| Q8_0 shape (N×K) | 2–6 tokens (forced) | 8 | 9 | 12 | 16 |
+| --- | --- | --- | --- | --- | --- |
+| 14336×4096 / 4096×14336 | 0.76–1.06× | 1.00–1.09× | 1.27 / 1.30× | 1.27 / 1.30× | 1.25 / 1.23× |
+| 4096×4096 | 0.72–0.79× | 0.84× | 1.19× | 1.13× | 1.06× |
+| 1024×4096 | 0.57–0.66× | 0.77× | – | 0.94× | 0.86× |
+
+**Small matrices**: with N = 1024 the kernel has too few blocks for the GPU and loses for every type (K-quants
+1024×5120: 0.66–0.90×); at 5 tokens IQ4_XS (0.76×) and Q5_K (0.93×) also lose to MMVQ on 6144×5120. **Routing now:**
+N ≥ 4096, and from 5 tokens for Q4_K, 6 for Q5_K (MMVQ is used up to 6 on Volta), 8 for IQ4_XS, 9 for Q8_0, up to 16.
+
+**Accuracy** (`p9-kld-*`; llama-perplexity KL divergence of the P-9 path against the upstream path in the same binary,
+on 4096 tokens of llama.cpp documentation, batches of 16 and 8 so every matmul is routed to the new kernel; earlier
+routing rule, which routed more shapes than the final one):
+
+| model | batch | PPL(P-9)/PPL(upstream) | mean KLD | 99.9% KLD | same top token |
+| --- | --- | --- | --- | --- | --- |
+| Llama-3.1-8B Q8_0 | 16 / 8 | 1.0012 ± 0.0011 / 1.0008 ± 0.0011 | 0.00030 / 0.00029 | 0.0050 / 0.0037 | 99.0% / 99.2% |
+| Qwen3.8-27B | 16 / 8 | 1.0011 ± 0.0015 / 0.9981 ± 0.0014 | 0.0017 / 0.0015 | 0.078 / 0.054 | 98.1% / 98.0% |
+
+The perplexity changes are inside their error bars, and smaller than upstream's own difference between batch 8 and
+batch 16 (0.04–0.3% PPL; different kernels). KLD here measures the difference from the upstream path, not error:
+upstream quantizes activations to int8 per 32 values, P-9 converts them to FP16. An FP32 reference was not run.
+
+**Final patch, end to end** (`p9-final2-*`, final routing; llama-bench depth 0, 2 rounds × 5 reps, first repetition
+dropped, same binary with `GGML_CUDA_NO_MMQ_VOLTA=1` as the baseline): Qwen3.8-27B **+21.8% at 8 tokens (133.1 → 162.2
+t/s) and +21.8% at 16 (207.1 → 252.1)**; Llama-3.1-8B-Q8_0 **+8.5% at 16 tokens (624.4 → 677.7)**; 1, 2, 4 tokens (and
+Llama at 8) within ±0.3%. MUL_MAT 2540/2540 on sm_70 (96 new cases); the tested diff is byte-identical to patch 0008.
+
+**Next**: Q6_K (10% of Qwen's bytes; 210-byte blocks need sub-16-byte staging), 2–4 tokens and small matrices (need
+a faster streaming path than shared-memory staging, i.e. (b), or a split along K for few rows), pairing matmuls that
+share an input, and an FP32-reference accuracy check.
 
 ## Upstreaming
 
