@@ -1,0 +1,2 @@
+MUL_MAT rc=0   2598/2598 tests passed
+MUL_MAT min2 minn1 rc=0   583/583 tests passed

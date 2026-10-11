@@ -1,10 +1,11 @@
 # P-9 design: small-batch quantised matmul on Volta tensor cores
 
-Status: **Phases 1 and 2 (two parts) done: patch `third_party/patches/0008-*.patch`, harness variant `qmm`**, measured
-on a V100 2026-10-11. Q4_K, Q5_K, Q6_K, IQ4_XS and Q8_0 at 5–16 tokens (per-type minimum, N ≥ 4096): Qwen3.8-27B
-+30.9% / +35.3% / +33.1% at 8 / 12 / 16 tokens and Llama-3.1-8B +19.6% / +17.4% at 12 / 16 tokens end to end,
-unchanged at 1–4 tokens; against an FP32 reference 15× (Qwen) and 6× (Llama) lower mean KL divergence than the
-current path; MUL_MAT 2598/2598 on sm_70. Not done: 2–4 tokens, small matrices (N < 4096), matmul pairing.
+Status: **Phases 1 and 2 (three parts) done: patch `third_party/patches/0008-*.patch`, harness variant `qmm`**,
+measured on a V100 2026-10-11. Q4_K, Q5_K, Q6_K, IQ4_XS and Q8_0 at 5–16 tokens (per-type minimum for N ≥ 4096;
+N ≤ 128 wherever MMQ would run): Qwen3.8-27B +35.4% / +41.8% / +40.9% at 8 / 12 / 16 tokens and Llama-3.1-8B
++26.8% / +26.3% at 12 / 16 tokens end to end, unchanged at 1–4 tokens; against an FP32 reference 15× (Qwen) and 6×
+(Llama) lower mean KL divergence than the current path; MUL_MAT 2628/2628 on sm_70. Not done: 2–4 tokens, matmul
+pairing, IQ4_NL / Q3_K; the kernel's remaining limit is described in "Phase 2, third part".
 Phase 0 data: `bench/results/p9-mmbase-v100-*`, `p9-qload-v100-*`, `p9-qload2-v100-*`.
 Owner decision points are marked **Decision**.
 
@@ -348,9 +349,96 @@ GPU time per 16-token Qwen evaluation (nsys): 78.6 ms current path, 59.1 ms now 
 the fork's QPN is at 41.1 ms (32.8 ms of matmul). MUL_MAT 2598/2598 on sm_70; all 20 kernel instances 0 spill, 0
 stack, 141–255 registers; the tested diff is byte-identical to patch 0008.
 
-**Next**: the N = 48 Q8_0 matrices (3.3 ms per Qwen evaluation on MMQ + fix-up; need a few-row split), 2–4 tokens
+**Next** (superseded by the third part below): the N = 48 Q8_0 matrices (3.3 ms per Qwen evaluation on MMQ + fix-up; need a few-row split), 2–4 tokens
 (MMVQ 610–675 GB/s; this kernel ≈ 480–550), pairing matmuls that share an input (one prep, larger grids; the prep kernels
 take 1.2 ms per Qwen evaluation), IQ4_NL / Q3_K (1.9 ms per Qwen evaluation on MMQ), and a faster Q6_K decode.
+
+## Phase 2, third part (2026-10-11, V100): split-K reduction, few-row matrices, where the time goes
+
+**Split-K reduction.** The last block of a row group added the P partial sums of each of its elements in a loop of
+dependent L2 loads, one chain per element: ntt·8·P round trips in sequence, ≈ 10–15 µs per launch. It showed as a
+fixed cost on every split launch: N = 48 Q8_0 at 16 tokens took 26.2 µs with P = 10 and 20.8 µs with P = 20, N = 4096 with
+P = 5 ≈ 15 µs more than its streaming time (`p9-few-*`, nsys). All partials of a step are now loaded together and
+added in the same fixed order of q, so results are unchanged: N = 48 Q8_0 26.2 → 16.2 µs at 16 tokens, 18.1 → 12.0 µs
+at 8 (`p9-red-*`, nsys). The split cost was re-checked with the new reduction (fixed cost 0, 1, 2; 2 interleaved
+rounds over the Qwen K-quant, Q6_K and Llama Q8_0 shapes at 5–16 tokens): 2 stays best or tied everywhere; 0 is up to
+20% slower on N = 6144 and 17408.
+
+**Few-row matrices** (`p9-small-*`: N = 16–512, K = 4096 / 5120, 5–16 tokens, 3 interleaved rounds; small operations
+jump between 20 and 70 µs between runs on both paths, so the minimum of the rounds is used). The kernel takes
+17–31 µs at N ≤ 128, MMVQ 9–14 µs and MMQ with its stream-k fix-up 32–39 µs; so at N ≤ 128 it wins exactly where the
+current path picks MMQ (per-type MMVQ limits on Volta: Q4_K 5, Q5_K 6, Q6_K 7, IQ4_XS and Q8_0 8 tokens) and loses
+where it picks MMVQ:
+
+| N (K = 4096 / 5120) | Q4_K | Q5_K | Q6_K | IQ4_XS | Q8_0 |
+| --- | --- | --- | --- | --- | --- |
+| 16–128, where MMQ runs | 1.35–2.90× | 1.21–1.86× | 1.07–1.51× | 1.29–1.55× | 1.38–1.97× |
+| 16–128, where MMVQ runs | ≤ 0.68× | ≤ 0.70× | ≤ 0.64× | ≤ 0.62× | ≤ 0.78× |
+| 256, where MMQ runs | 1.08–1.43× | 1.02–1.31× | 0.89–1.05× | 1.05–1.10× | 1.09–1.18× |
+| 512, where MMQ runs | 0.94–1.25× | 0.89–1.17× | 0.77–0.93× | 0.87–0.98× | 0.94–1.02× |
+
+Routing: N ≤ 128 when `ggml_cuda_should_use_mmvq` is false (N = 129–4095 stays on the current path). In the model the
+gain is smaller than these numbers suggest: test-backend-ops repeats one 245 KB matrix, which stays in L2, while
+Qwen's 96 `ssm_alpha` / `ssm_beta` launches per evaluation take 16.5–35.6 µs (median 23.0, `p9-few2-*/dist.txt`)
+against 34.4 µs for MMQ + fix-up. Splitting K further (1 superblock per block, P = 20) changes nothing there (28.0 vs
+28.2 µs average) or end to end; the cause of the in-model cost is not found.
+
+**Q6_K decode** (from the fork's QPN comment): with the codes at bits 4–9 under 0x6400 (1024 + 16q), one HFMA2 with
+sc/16 and −96·sc gives sc·(q − 32) with one rounding: both constants are exact in FP16 for every int8 sc, and the
+result equals the previous HSUB2 + HMUL2 bit for bit (checked for all sc and q). About 100 fewer instructions per
+superblock and warp (2221 → 2124 in the main loop, SASS); its speed was not measured separately.
+
+**Where the time goes** (`p9-exp-*`, same binary, development switches; 2 rounds; times include the prep kernel):
+
+| shape, 16 tokens | current path | P-9 | weights from L2 (compute only) | loads + staging only | 3 blocks/SM (`__launch_bounds__`) |
+| --- | --- | --- | --- | --- | --- |
+| Q4_K 17408×5120 | 205 µs | 109 µs | 86 µs | 86 µs | 131 µs |
+| Q5_K 17408×5120 | 234 µs | 129 µs | 101 µs | 100 µs | 174 µs |
+| IQ4_XS 17408×5120 | 202 µs | 121 µs | 97 µs | 80 µs | 140 µs |
+| Q6_K 17408×5120 | 239 µs | 169 µs | 122 µs | 116 µs | 200 µs |
+| Q8_0 4096×14336 (no prefetch) | 175 µs | 122 µs | 64 µs | 109 µs | 121 µs |
+
+"Weights from L2": every row tile reads rows 0..31, so the weights come from L2 (wrong results, timing only). "Loads +
+staging only": no decode or mma, shared memory padded so the same number of blocks fit per SM (at 8 tokens this
+variant is slower than the full kernel, probably because the padding takes L1 capacity, so it is used at 16 only).
+For the K-quants, compute alone and loads alone each take ≈ 80% of the full time: neither dominates, they already
+overlap, and making one side faster gains little. Q8_0, which loaded its weights only when staging them, is
+load-bound; prefetching 8 of its 17 units into registers (`p9-pf-*`, 0 / 8 / 17 units in three builds, each against
+the current path in the same binary, 3 interleaved rounds) is 3–4% faster on the large shapes (e.g. 17408×5120 at 16
+tokens 159.8 → 153.3 µs); all 17 fit (245 registers, 0 spill) but are no faster. More blocks per SM through
+`__launch_bounds__(…, 3)` (≤ 168 registers) are slower everywhere, also with the weights in L2.
+
+Static count (SASS, Q4_K, 9–16 tokens): 1430 instructions per superblock and warp in the main loop, 528 of them HMMA
+(FP32 accumulation: 4 per m8n8k4). With 2 blocks of 4 warps per SM the schedulers issue in ≈ 35–40% of cycles, so
+the compute side is latency-bound rather than issue-bound.
+
+A load microbenchmark (`p9-exp-*/bwtest.cu`, `bwtest.txt`: 32 rows × 144 bytes per warp and step, registers →
+shared memory, depth 1, 2 blocks of 4 warps per SM, 17408 × 5120 Q4_K-sized rows) reads 685 GB/s with the native
+layout, 747 GB/s with 2 superblocks per row and step (288 contiguous bytes), and 801 GB/s with a tile-contiguous
+layout like the fork's repacking. The fork's QPN pair kernel streams ≈ 590 GB/s on the Q5_K gate/up pair (207.8 µs for two
+17408×5120 matrices; nsys, `ce-v100-*`) against 365–600 GB/s per launch here (`p9-final4-*/shapes-p9-pp16.txt`;
+the 136-block launches of 17408-row matrices are the slow end). Closing that needs both a cheaper compute side (no
+weight staging through shared memory, which in the native layout is what makes the loads coalesced) and longer
+contiguous reads: a different kernel structure, probably with repacked weights, i.e. design option (b).
+
+**Final patch, end to end** (`p9-final4-*`, exact patch diff, llama-bench depth 0, 2 rounds × 5 reps, first
+repetition dropped, same binary with `GGML_CUDA_NO_MMQ_VOLTA=1` as the baseline):
+
+| model | 1 token | 2 | 4 | 8 | 12 | 16 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Qwen3.8-27B-UD-Q4_K_XL | 32.7 → 32.7 | 60.3 → 60.4 | 96.8 → 96.8 | 133.3 → **180.4 (+35.4%)** | 157.6 → **223.6 (+41.8%)** | 207.0 → **291.7 (+40.9%)** |
+| Llama-3.1-8B-Q8_0 | 80.2 → 80.3 | 153.8 → 153.8 | 289.9 → 289.9 | 469.3 → 469.6 | 476.1 → **603.7 (+26.8%)** | 624.8 → **789.2 (+26.3%)** |
+
+(Second part: Qwen +30.9 / +35.3 / +33.1%, Llama +19.6 / +17.4%.) Most of the Llama gain is the reduction fix: its
+4096-row matrices run with P = 5. GPU time per 16-token Qwen evaluation (nsys): 59.1 → 56.2 ms, quantised matmul
+49.0 → 46.2 ms (fork: 32.8 ms). MUL_MAT 2628/2628 on sm_70; all 20 kernel instances 0 spill, 0 stack, 163–255
+registers; the tested diff is byte-identical to patch 0008. Accuracy was not re-measured: the only routing change is
+the N ≤ 128 rule, which moves matrices to the FP16 path.
+
+**Next**: the kernel structure (above) is the remaining large item (46.2 ms of quantised matmul per Qwen evaluation
+against the fork's 32.8 ms); it needs the weight-layout mechanism of design option (b), which is an owner decision. Smaller: 2–4 tokens (MMVQ
+610–675 GB/s, this kernel ≈ 480–550), IQ4_NL / Q3_K (1.9 ms per Qwen evaluation on MMQ), pairing matmuls that share
+an input (one prep; the fork's pair kernels), the in-model cost of the N = 48 matrices.
 
 ## Upstreaming
 

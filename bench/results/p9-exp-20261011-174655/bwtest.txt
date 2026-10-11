@@ -1,0 +1,12 @@
+# V100, /root/bwtest (bwtest.cu, nvcc 12.8 -O3 -arch=sm_70), 2026-10-11 18:28; 17408 rows x K = 5120 (Q4_K-sized rows
+# for B = 144); the run crashed at the first tiled B = 176 case (not investigated), so the lines below are all it printed.
+B=144 SB=1 native NR=4 P=1 occ=2:    73.1 us   685.5 GB/s
+B=144 SB=2 native NR=4 P=1 occ=2:    67.1 us   747.0 GB/s
+B=144 SB=4 native NR=4 P=1 occ=1:    68.7 us   730.1 GB/s
+B=144 SB=1 tiled  NR=4 P=1 occ=2:    62.6 us   801.3 GB/s
+B=144 SB=2 tiled  NR=4 P=1 occ=2:    63.0 us   795.3 GB/s
+B=144 SB=1 native NR=2 P=1 occ=4:    73.5 us   682.5 GB/s
+B=144 SB=2 native NR=2 P=1 occ=4:    67.1 us   747.3 GB/s
+B=144 SB=1 tiled  NR=2 P=1 occ=4:    62.5 us   802.4 GB/s
+B=176 SB=1 native NR=4 P=1 occ=2:    87.8 us   697.8 GB/s
+B=176 SB=2 native NR=4 P=1 occ=2:    81.2 us   754.6 GB/s

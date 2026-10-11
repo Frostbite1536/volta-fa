@@ -1,0 +1,15 @@
+[17:46:56] build 135 MHz, 37
+[17:47:44] correctness 135 MHz, 35
+[17:48:28] perf up r1 1230 MHz, 36
+[17:51:35] perf base r1 1380 MHz, 48
+[17:54:50] perf mb r1 1380 MHz, 49
+[17:58:02] perf nl r1 1380 MHz, 48
+[18:01:16] perf nlmb r1 1380 MHz, 48
+[18:04:22] perf nc r1 1380 MHz, 47
+[18:07:35] perf up r2 1380 MHz, 44
+[18:10:49] perf base r2 1380 MHz, 48
+[18:13:54] perf mb r2 1380 MHz, 49
+[18:16:57] perf nl r2 1380 MHz, 48
+[18:20:11] perf nlmb r2 1380 MHz, 48
+[18:23:22] perf nc r2 1380 MHz, 47
+[18:26:34] done RESULTS /root/volta-fa/bench/results/p9-exp-20261011-174655 1380 MHz, 45

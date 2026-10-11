@@ -1,0 +1,11 @@
+[15:11:19] build 135 MHz, 34
+[15:12:07] correctness 135 MHz, 34
+[15:15:34] perf up r1 1380 MHz, 36
+[15:27:33] perf w2 r1 1380 MHz, 50
+[15:39:15] perf w1 r1 1380 MHz, 48
+[15:51:09] perf w0 r1 1380 MHz, 49
+[16:02:50] perf up r2 1380 MHz, 49
+[16:14:38] perf w2 r2 1380 MHz, 50
+[16:26:33] perf w1 r2 1380 MHz, 49
+[16:38:38] perf w0 r2 1380 MHz, 49
+[16:50:32] done RESULTS /root/volta-fa/bench/results/p9-red-20261011-151118 1380 MHz, 49

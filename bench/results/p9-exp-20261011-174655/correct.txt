@@ -1,0 +1,1 @@
+MUL_MAT mb min2 minn1 rc=0   583/583 tests passed

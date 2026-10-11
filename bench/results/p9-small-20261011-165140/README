@@ -1,0 +1,1 @@
+correct.txt shows 0/0: the filter matched no eval test (the added shapes are perf-only cases). The few-row eval cases ran in p9-red-* (forced, 583/583) and p9-final4-* (default routing incl. N = 48 / 100, 2628/2628). cmp3.txt uses medians; the doc uses the minimum of the 3 rounds (small operations jump between runs on both paths).

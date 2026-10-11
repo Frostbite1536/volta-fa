@@ -1,0 +1,13 @@
+[18:55:08] build 135 MHz, 34
+[18:55:34] correctness 135 MHz, 34
+[18:57:28] nsys pd2 1230 MHz, 36
+[18:57:37] nsys pd1 1380 MHz, 37
+[18:57:46] lb Meta-Llama-3.1-8B-Instruct-Q8_0 pd2 r1 1380 MHz, 37
+[18:57:49] lb Meta-Llama-3.1-8B-Instruct-Q8_0 pd1 r1 1380 MHz, 39
+[18:57:52] lb Qwen3.8-27B-UD-Q4_K_XL pd2 r1 1380 MHz, 39
+[18:57:59] lb Qwen3.8-27B-UD-Q4_K_XL pd1 r1 1380 MHz, 40
+[18:58:06] lb Meta-Llama-3.1-8B-Instruct-Q8_0 pd2 r2 1380 MHz, 40
+[18:58:09] lb Meta-Llama-3.1-8B-Instruct-Q8_0 pd1 r2 1380 MHz, 39
+[18:58:13] lb Qwen3.8-27B-UD-Q4_K_XL pd2 r2 1380 MHz, 39
+[18:58:20] lb Qwen3.8-27B-UD-Q4_K_XL pd1 r2 1380 MHz, 40
+[18:58:27] done RESULTS /root/volta-fa/bench/results/p9-few2-20261011-185506 1380 MHz, 40

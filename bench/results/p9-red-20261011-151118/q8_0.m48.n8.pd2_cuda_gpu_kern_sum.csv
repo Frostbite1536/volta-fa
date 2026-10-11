@@ -1,0 +1,3 @@
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Name
+86.3,98497610,8193,12022.2,12064.0,10975,16768,220.3,"void mul_mat_q_volta<(ggml_type)8, (int)1, (int)2>(const char *, const __half *, const __half *, float *, float *, int *, int, int, int, long, long)"
+13.7,15607973,8193,1905.0,1920.0,1696,6464,75.4,"void mmq_volta_prep<(ggml_type)8>(const float *, __half *, __half *, int, int, long)"

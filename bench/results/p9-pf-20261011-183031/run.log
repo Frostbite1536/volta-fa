@@ -1,0 +1,14 @@
+[18:30:32] build pf=0 135 MHz, 34
+[18:31:19] build pf=8 135 MHz, 34
+[18:31:45] build pf=17 135 MHz, 34
+[18:32:11] correctness 135 MHz, 34
+[18:38:02] perf pf=0 r1 1230 MHz, 36
+[18:39:00] perf pf=8 r1 1380 MHz, 45
+[18:39:58] perf pf=17 r1 1380 MHz, 46
+[18:40:55] perf pf=0 r2 1380 MHz, 46
+[18:41:53] perf pf=8 r2 1380 MHz, 46
+[18:42:51] perf pf=17 r2 1380 MHz, 46
+[18:43:49] perf pf=0 r3 1380 MHz, 46
+[18:44:47] perf pf=8 r3 1380 MHz, 46
+[18:45:45] perf pf=17 r3 1380 MHz, 47
+[18:46:43] done RESULTS /root/volta-fa/bench/results/p9-pf-20261011-183031 1380 MHz, 46

@@ -1,0 +1,10 @@
+# V100, same build (p9-dev11.diff, default split), nsys of llama-bench Qwen3.8-27B-UD-Q4_K_XL -p 16 -r 5, durations of
+# the N = 48 Q8_0 launches (mul_mat_q_volta<Q8_0, 2, 2>, grid 1x10), dist.py on the exported sqlite (not kept):
+n 576 min 16.5 p10 22.1 med 23.0 p90 34.8 max 35.6
+# neighbours of the first launches (duration, gap to the previous kernel, kernel, grid):
+        3.2 us  gap   34.2  mmq_volta_prep<Q8_0> grid 20x16
+       21.8 us  gap  112.3  mul_mat_q_volta<Q8_0, 2, 2> grid 1x10
+        2.2 us  gap   15.9  mmq_volta_prep<Q8_0> grid 20x16
+       21.8 us  gap   21.5  mul_mat_q_volta<Q8_0, 2, 2> grid 1x10
+        3.0 us  gap    0.8  mmq_volta_prep<Q8_0> grid 20x16
+       34.5 us  gap    3.2  mul_mat_q_volta<Q8_0, 2, 2> grid 1x10

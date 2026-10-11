@@ -1,0 +1,9 @@
+[16:51:41] build 135 MHz, 35
+[16:52:29] correctness 135 MHz, 34
+[16:52:30] perf up r1 1230 MHz, 35
+[17:01:36] perf p9 r1 1380 MHz, 42
+[17:10:35] perf up r2 1380 MHz, 40
+[17:19:42] perf p9 r2 1380 MHz, 42
+[17:28:44] perf up r3 1380 MHz, 40
+[17:37:50] perf p9 r3 1380 MHz, 42
+[17:46:48] done RESULTS /root/volta-fa/bench/results/p9-small-20261011-165140 1380 MHz, 40

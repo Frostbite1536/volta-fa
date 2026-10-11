@@ -1,0 +1,108 @@
+    7706 us/eval   75.0x avg   102.7 us grid 40x4x1 blk 128  void mul_mat_q_volta<(ggml_type)13, (int)2, (int)4>
+    6690 us/eval   51.0x avg   131.2 us grid 136x1x1 blk 128  void mul_mat_q_volta<(ggml_type)13, (int)2, (int)4>
+    6555 us/eval   75.0x avg    87.4 us grid 80x4x1 blk 64  void mul_mat_q_volta<(ggml_type)13, (int)1, (int)2>
+    5940 us/eval   46.0x avg   129.1 us grid 136x1x1 blk 128  void mul_mat_q_volta<(ggml_type)23, (int)2, (int)4>
+    5747 us/eval   51.0x avg   112.7 us grid 272x1x1 blk 64  void mul_mat_q_volta<(ggml_type)13, (int)1, (int)2>
+    4486 us/eval   46.0x avg    97.5 us grid 272x1x1 blk 64  void mul_mat_q_volta<(ggml_type)23, (int)1, (int)2>
+    2781 us/eval    2.0x avg  1390.5 us grid 248320x1x1 blk 32  void mul_mat_vec_q<(ggml_type)14, (int)1, (bool)0, (bool)0, (bool)0>
+    2774 us/eval   25.0x avg   111.0 us grid 40x4x1 blk 128  void mul_mat_q_volta<(ggml_type)14, (int)2, (int)4>
+    2712 us/eval   96.0x avg    28.2 us grid 1x20x1 blk 64  void mul_mat_q_volta<(ggml_type)8, (int)2, (int)2>
+    2479 us/eval   25.0x avg    99.2 us grid 80x4x1 blk 64  void mul_mat_q_volta<(ggml_type)14, (int)1, (int)2>
+    2333 us/eval   31.0x avg    75.3 us grid 48x3x1 blk 128  void mul_mat_q_volta<(ggml_type)13, (int)2, (int)4>
+    2263 us/eval   19.0x avg   119.1 us grid 136x1x1 blk 128  void mul_mat_q_volta<(ggml_type)12, (int)2, (int)4>
+    2143 us/eval   17.0x avg   126.1 us grid 40x4x1 blk 128  void mul_mat_q_volta<(ggml_type)23, (int)2, (int)4>
+    1978 us/eval   21.0x avg    94.2 us grid 80x2x1 blk 128  void mul_mat_q_volta<(ggml_type)13, (int)2, (int)4>
+    1976 us/eval   31.0x avg    63.7 us grid 96x3x1 blk 64  void mul_mat_q_volta<(ggml_type)13, (int)1, (int)2>
+    1856 us/eval   23.0x avg    80.7 us grid 80x2x1 blk 128  void mul_mat_q_volta<(ggml_type)12, (int)2, (int)4>
+    1836 us/eval   19.0x avg    96.6 us grid 272x1x1 blk 64  void mul_mat_q_volta<(ggml_type)12, (int)1, (int)2>
+    1734 us/eval   17.0x avg   102.0 us grid 80x4x1 blk 64  void mul_mat_q_volta<(ggml_type)23, (int)1, (int)2>
+    1706 us/eval   21.0x avg    81.2 us grid 160x2x1 blk 64  void mul_mat_q_volta<(ggml_type)13, (int)1, (int)2>
+    1525 us/eval   23.0x avg    66.3 us grid 160x2x1 blk 64  void mul_mat_q_volta<(ggml_type)12, (int)1, (int)2>
+    1194 us/eval    6.0x avg   199.0 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)20, (int)16, (bool)0, (ggml_prec)30>
+    1108 us/eval   96.0x avg    11.5 us grid 24x1x1 blk 32  void mul_mat_vec_q<(ggml_type)8, (int)8, (bool)0, (bool)0, (bool)0>
+     927 us/eval    8.0x avg   115.9 us grid 96x3x1 blk 128  void mul_mat_q_volta<(ggml_type)13, (int)2, (int)4>
+     850 us/eval   13.0x avg    65.4 us grid 48x3x1 blk 128  void mul_mat_q_volta<(ggml_type)12, (int)2, (int)4>
+     788 us/eval    8.0x avg    98.5 us grid 192x3x1 blk 64  void mul_mat_q_volta<(ggml_type)13, (int)1, (int)2>
+     720 us/eval    4.0x avg   180.0 us grid 136x1x1 blk 128  void mul_mat_q_volta<(ggml_type)14, (int)2, (int)4>
+     690 us/eval    3.0x avg   230.1 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)11, (int)16, (bool)0, (ggml_prec)30>
+     690 us/eval   13.0x avg    53.1 us grid 96x3x1 blk 64  void mul_mat_q_volta<(ggml_type)12, (int)1, (int)2>
+     655 us/eval    6.0x avg   109.2 us grid 40x4x1 blk 128  void mul_mat_q_volta<(ggml_type)12, (int)2, (int)4>
+     650 us/eval    4.0x avg   162.5 us grid 272x1x1 blk 64  void mul_mat_q_volta<(ggml_type)14, (int)1, (int)2>
+     606 us/eval    6.0x avg   101.0 us grid 96x3x1 blk 128  void mul_mat_q_volta<(ggml_type)12, (int)2, (int)4>
+     599 us/eval    3.0x avg   199.7 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)11, (int)8, (bool)0, (ggml_prec)30>
+     549 us/eval    6.0x avg    91.5 us grid 80x4x1 blk 64  void mul_mat_q_volta<(ggml_type)12, (int)1, (int)2>
+     490 us/eval    6.0x avg    81.7 us grid 192x3x1 blk 64  void mul_mat_q_volta<(ggml_type)12, (int)1, (int)2>
+     462 us/eval    2.0x avg   231.1 us grid 17408x1x1 blk 32  void mul_mat_vec_q<(ggml_type)14, (int)1, (bool)1, (bool)0, (bool)0>
+     404 us/eval   15.0x avg    27.0 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)14, (int)16, (bool)0, (ggml_prec)30>
+     401 us/eval  111.0x avg     3.6 us grid 20x16x1 blk 256  void mmq_volta_prep<(ggml_type)13>
+     382 us/eval    3.0x avg   127.3 us grid 8704x1x1 blk 32  void mul_mat_vec_q<(ggml_type)20, (int)8, (bool)0, (bool)0, (bool)0>
+     353 us/eval  111.0x avg     3.2 us grid 20x8x1 blk 256  void mmq_volta_prep<(ggml_type)13>
+     338 us/eval   15.0x avg    22.6 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)14, (int)8, (bool)0, (ggml_prec)30>
+     330 us/eval  111.0x avg     3.0 us grid 20x8x1 blk 256  quantize_q8_1
+     288 us/eval   11.0x avg    26.2 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)8, (int)16, (bool)0, (ggml_prec)30>
+     278 us/eval   96.0x avg     2.9 us grid 20x16x1 blk 256  void mmq_volta_prep<(ggml_type)8>
+     270 us/eval    2.0x avg   134.9 us grid 2560x1x1 blk 32  void mul_mat_vec_q<(ggml_type)20, (int)8, (bool)0, (bool)0, (bool)0>
+     263 us/eval    1.0x avg   262.8 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)21, (int)16, (bool)0, (ggml_prec)30>
+     240 us/eval    2.0x avg   120.2 us grid 5120x1x1 blk 32  void mul_mat_vec_q<(ggml_type)14, (int)1, (bool)1, (bool)0, (bool)0>
+     221 us/eval    2.0x avg   110.3 us grid 96x3x1 blk 128  void mul_mat_q_volta<(ggml_type)23, (int)2, (int)4>
+     220 us/eval    3.0x avg    73.5 us grid 48x3x1 blk 128  void mul_mat_q_volta<(ggml_type)23, (int)2, (int)4>
+     215 us/eval   61.0x avg     3.5 us grid 20x16x1 blk 256  void mmq_volta_prep<(ggml_type)12>
+     207 us/eval   11.0x avg    18.8 us grid 512x1x1 blk 32  void mul_mat_vec_q<(ggml_type)8, (int)8, (bool)0, (bool)0, (bool)0>
+     203 us/eval    1.0x avg   203.4 us grid 2560x1x1 blk 32  void mul_mat_vec_q<(ggml_type)21, (int)8, (bool)0, (bool)0, (bool)0>
+     193 us/eval   61.0x avg     3.2 us grid 20x8x1 blk 256  void mmq_volta_prep<(ggml_type)12>
+     182 us/eval    2.0x avg    91.1 us grid 80x2x1 blk 128  void mul_mat_q_volta<(ggml_type)23, (int)2, (int)4>
+     180 us/eval    3.0x avg    60.1 us grid 96x3x1 blk 64  void mul_mat_q_volta<(ggml_type)23, (int)1, (int)2>
+     177 us/eval    2.0x avg    88.4 us grid 192x3x1 blk 64  void mul_mat_q_volta<(ggml_type)23, (int)1, (int)2>
+     171 us/eval   35.0x avg     4.9 us grid 68x16x1 blk 256  void mmq_volta_prep<(ggml_type)13>
+     155 us/eval   53.0x avg     2.9 us grid 20x16x1 blk 256  void mmq_volta_prep<(ggml_type)23>
+     147 us/eval    2.0x avg    73.7 us grid 160x2x1 blk 64  void mul_mat_q_volta<(ggml_type)23, (int)1, (int)2>
+     143 us/eval   53.0x avg     2.7 us grid 20x8x1 blk 256  void mmq_volta_prep<(ggml_type)23>
+     140 us/eval   40.0x avg     3.5 us grid 24x16x1 blk 256  void mmq_volta_prep<(ggml_type)13>
+     128 us/eval    1.0x avg   128.4 us grid 80x2x1 blk 128  void mul_mat_q_volta<(ggml_type)14, (int)2, (int)4>
+     128 us/eval   40.0x avg     3.2 us grid 24x8x1 blk 256  void mmq_volta_prep<(ggml_type)13>
+     127 us/eval    5.0x avg    25.5 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)13, (int)16, (bool)0, (ggml_prec)30>
+     121 us/eval   35.0x avg     3.5 us grid 68x8x1 blk 256  void mmq_volta_prep<(ggml_type)13>
+     118 us/eval   15.0x avg     7.9 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)14, (int)16, (bool)0, (ggml_p
+     118 us/eval    1.0x avg   117.7 us grid 160x2x1 blk 64  void mul_mat_q_volta<(ggml_type)14, (int)1, (int)2>
+     114 us/eval   33.0x avg     3.4 us grid 16x10x1 blk 128  void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)0, (bool)0>
+     105 us/eval    5.0x avg    21.1 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)13, (int)8, (bool)0, (ggml_prec)30>
+     103 us/eval    1.0x avg   102.7 us grid 48x3x1 blk 128  void mul_mat_q_volta<(ggml_type)14, (int)2, (int)4>
+     102 us/eval   15.0x avg     6.8 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)14, (int)8, (bool)0, (ggml_pr
+      92 us/eval    1.0x avg    92.1 us grid 96x3x1 blk 64  void mul_mat_q_volta<(ggml_type)14, (int)1, (int)2>
+      89 us/eval   11.0x avg     8.1 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)8, (int)16, (bool)0, (ggml_pr
+      81 us/eval    1.0x avg    80.5 us grid 5120x1x1 blk 32  void mul_mat_vec_q<(ggml_type)20, (int)8, (bool)0, (bool)0, (bool)0>
+      79 us/eval    1.0x avg    79.3 us grid 40x4x1 blk 128  void mul_mat_q_volta<(ggml_type)8, (int)2, (int)4>
+      70 us/eval    1.0x avg    70.0 us grid 2560x1x1 blk 32  void mul_mat_vec_q<(ggml_type)8, (int)8, (bool)0, (bool)0, (bool)0>
+      67 us/eval   21.0x avg     3.2 us grid 24x16x1 blk 256  void mmq_volta_prep<(ggml_type)14>
+      62 us/eval   16.0x avg     3.9 us grid 68x16x1 blk 256  void mmq_volta_prep<(ggml_type)23>
+      60 us/eval   21.0x avg     2.8 us grid 24x8x1 blk 256  void mmq_volta_prep<(ggml_type)14>
+      58 us/eval   18.0x avg     3.2 us grid 8x10x1 blk 128  void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)0, (bool)0>
+      48 us/eval   16.0x avg     3.0 us grid 68x8x1 blk 256  void mmq_volta_prep<(ggml_type)23>
+      39 us/eval    5.0x avg     7.8 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)13, (int)16, (bool)0, (ggml_p
+      34 us/eval    5.0x avg     6.8 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)13, (int)8, (bool)0, (ggml_pr
+      30 us/eval    5.0x avg     6.1 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)20, (int)16, (bool)0, (ggml_p
+      26 us/eval    5.0x avg     5.1 us grid 68x16x1 blk 256  void mmq_volta_prep<(ggml_type)12>
+      25 us/eval    1.0x avg    25.1 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)12, (int)16, (bool)0, (ggml_prec)30>
+      22 us/eval    6.0x avg     3.6 us grid 16x10x1 blk 128  void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)1, (bool)0>
+      20 us/eval    1.0x avg    20.0 us grid 80x1x1 blk 32  void mul_mat_q<(ggml_type)12, (int)8, (bool)0, (ggml_prec)30>
+      19 us/eval    3.0x avg     6.4 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)11, (int)16, (bool)0, (ggml_p
+      19 us/eval    5.0x avg     3.7 us grid 68x8x1 blk 256  void mmq_volta_prep<(ggml_type)12>
+      19 us/eval    6.0x avg     3.1 us grid 8x10x1 blk 128  void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)1, (bool)0>
+      18 us/eval    6.0x avg     3.1 us grid 20x16x1 blk 256  void mmq_volta_prep<(ggml_type)14>
+      17 us/eval    6.0x avg     2.8 us grid 20x8x1 blk 256  void mmq_volta_prep<(ggml_type)14>
+      17 us/eval    4.0x avg     4.2 us grid 68x16x1 blk 256  void mmq_volta_prep<(ggml_type)14>
+      15 us/eval    3.0x avg     5.1 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)11, (int)8, (bool)0, (ggml_pr
+      13 us/eval    4.0x avg     3.2 us grid 68x8x1 blk 256  void mmq_volta_prep<(ggml_type)14>
+      11 us/eval    3.0x avg     3.8 us grid 16x34x1 blk 128  void quantize_mmq_q8_1<(mmq_q8_1_ds_layout)0, (bool)0>
+      11 us/eval    3.0x avg     3.7 us grid 68x8x1 blk 256  quantize_q8_1
+      10 us/eval    4.0x avg     2.4 us grid 20x1x1 blk 256  quantize_q8_1
+       8 us/eval    1.0x avg     7.9 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)12, (int)16, (bool)0, (ggml_p
+       7 us/eval    1.0x avg     7.0 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)12, (int)8, (bool)0, (ggml_pr
+       5 us/eval    2.0x avg     2.6 us grid 68x1x1 blk 256  quantize_q8_1
+       5 us/eval    1.0x avg     4.9 us grid 80x4x1 blk 32  void mul_mat_q_stream_k_fixup<(ggml_type)21, (int)16, (bool)0, (ggml_p
+       3 us/eval    1.0x avg     3.5 us grid 24x16x1 blk 256  void mmq_volta_prep<(ggml_type)12>
+       3 us/eval    1.0x avg     3.1 us grid 24x8x1 blk 256  void mmq_volta_prep<(ggml_type)12>
+       3 us/eval    1.0x avg     3.1 us grid 24x8x1 blk 256  quantize_q8_1
+       3 us/eval    1.0x avg     3.0 us grid 24x16x1 blk 256  void mmq_volta_prep<(ggml_type)8>
+       3 us/eval    1.0x avg     2.9 us grid 24x16x1 blk 256  void mmq_volta_prep<(ggml_type)23>
+       3 us/eval    1.0x avg     2.6 us grid 24x8x1 blk 256  void mmq_volta_prep<(ggml_type)23>

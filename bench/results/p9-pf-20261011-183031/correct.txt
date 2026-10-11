@@ -1,0 +1,6 @@
+pf=0 MUL_MAT rc=0   2598/2598 tests passed
+pf=0 q8_0 min2 minn1 rc=0   143/143 tests passed
+pf=8 MUL_MAT rc=0   2598/2598 tests passed
+pf=8 q8_0 min2 minn1 rc=0   143/143 tests passed
+pf=17 MUL_MAT rc=0   2598/2598 tests passed
+pf=17 q8_0 min2 minn1 rc=0   143/143 tests passed

@@ -1,0 +1,4 @@
+[1/3] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/mmq-volta.cu.o
+nvcc warning : Support for offline compilation for architectures prior to '<compute/sm/lto>_75' will be removed in a future release (Use -Wno-deprecated-gpu-targets to suppress warning).
+[2/3] Linking CXX static library ggml/src/ggml-cuda/libggml-cuda.a
+[3/3] Linking CXX executable bin/test-backend-ops

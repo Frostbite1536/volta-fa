@@ -1,0 +1,16 @@
+q8_0.m48.n8.pd2 kern avg 12.0 us
+q8_0.m48.n8.pd1 kern avg 11.2 us
+q8_0.m48.n16.pd2 kern avg 16.2 us
+q8_0.m48.n16.pd1 kern avg 16.9 us
+q8_0.m4096.n8.pd2 
+q8_0.m4096.n8.pd1 
+q8_0.m4096.n16.pd2 
+q8_0.m4096.n16.pd1 
+q4_K.m48.n8.pd2 kern avg 10.6 us
+q4_K.m48.n8.pd1 kern avg 9.7 us
+q4_K.m48.n16.pd2 kern avg 16.0 us
+q4_K.m48.n16.pd1 kern avg 16.7 us
+q4_K.m4096.n8.pd2 
+q4_K.m4096.n8.pd1 
+q4_K.m4096.n16.pd2 
+q4_K.m4096.n16.pd1 
