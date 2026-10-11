@@ -1,5 +1,8 @@
 # Padding rule for 0002 and packed VEC (0007) on a V100 (2026-10-10/11, session 2 extension)
 
+**Later (2026-10-11):** 0007's rule was refined with 8-K/V-head data (GQA 2 and 3 pack with ≥ 8 K/V heads), and the
+D=256 f16 cost in §4 was attributed to 0007: `qwen-smallbatch-and-vecpack-heads-v100-2026-10-11.md`.
+
 Same Vast.ai instance as `patches-cloud-2026-10-10.md` (Tesla V100-PCIE-32GB, 1380 MHz, CUDA 12.8.93, llama.cpp
 `79e2e74`), used after that write-up while it was still rented. Clocks 1230–1380 MHz and 32–58 °C in every
 timed pass (`run.log` in each results directory).

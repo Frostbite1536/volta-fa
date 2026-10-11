@@ -1,10 +1,12 @@
 # P-8 Change 4: GQA-packed VEC kernel for quantised-KV decode
 
 Status: **patch `third_party/patches/0007-*.patch`, measured on a V100** (`docs/research/pad-rule-vecpack-v100-2026-10-10.md`).
-Full FA suite 4334/4334 on sm_70 and on the laptop's sm_52 (memcheck clean). Llama-3.1-8B tg64 @16K vs upstream:
+Full FA suite 4358/4358 on sm_70 (laptop sm_52: quantised single-token cases pass, memcheck clean). Llama-3.1-8B tg64 @16K vs upstream:
 q8_0 **+26.8%**, q4_0 +56.2%, f16 0.0%; Qwen3.8-27B q8_0 +5.8%. Kernel: 1.08–2.45× at 32K for GQA 3–8 vs
-unpacked. Known costs: GQA 3 at 4K (0.88–0.92×; D=64 GQA 5 q8_0 0.95×) and D=256 f16 single-token decode at
-GQA 3/5/6/7 (0.96–0.98×, unpacked instances whose code 0007 touches; not attributed).
+unpacked with 4 K/V heads, 1.02–2.53× (median 1.52×, no loss) with 8. Known costs: with 4 K/V heads, GQA 3 at 4K
+(0.85–0.93×) and D=64 GQA 5 q8_0 4K (0.93×); D=256 f16 single-token decode at GQA 3/5/6/7 0.95–0.98× (shown to come
+from 0007's changes to the unpacked instances; scheduling, not added instructions; ~0.1–0.7% of Qwen3.8-27B f16
+decode). D=128 at the same shapes is up to 1.05× faster.
 In the harness as variant `vecpack` (0001–0007).
 
 ## Why
@@ -22,11 +24,13 @@ K/V head is read and dequantised once per Q head. On the V100 the unpacked time 
 - Per column: the Q pointer, the validity check (token in the batch, head not padding), the mask row (shared
   by the heads of a token), the sink (guarded for padded heads), and the output and meta indices. ALiBi
   is excluded (one slope per block).
-- **Rule** (quantised K, one token, no softcap, no ALiBi): GQA ≥ 3; **4 heads per block when the GQA ratio is a
-  multiple of 4 or is 7** (7 padded to 8), **otherwise 2** (3 → 4, 5 → 6, 6 exact). GQA 1–2 unpacked. Chosen by
-  scoring rules against 72 measured V100 cells (D 64/128/256 × q8_0/q4_0 × GQA 3–8 × KV 4K/32K): 8 heads per
-  block was never faster than 4; GQA 6 is fastest as 3 blocks of 2; packing GQA 2 gains 1.15–1.45× at 32K but
-  loses 0.78× at D=256 4K.
+- **Rule** (quantised K, one token, no softcap, no ALiBi): **4 heads per block when the GQA ratio is a multiple
+  of 4 or is 7** (7 padded to 8), **otherwise 2** (5 → 6, 6 exact); with **≥ 8 K/V heads × sequences, GQA 3 uses 4
+  and GQA 2 uses 2**, with fewer GQA 3 uses 2 (padded to 4) and GQA 2 stays unpacked. GQA 1 unpacked. Chosen by
+  scoring rules against 72 measured V100 cells with 4 K/V heads (8 heads per block never faster than 4; GQA 6
+  fastest as 3 blocks of 2), then refined with 8 K/V heads, where packing never lost and GQA 2 (1.10–1.75×) and
+  GQA 3 at 4 per block won (`docs/research/qwen-smallbatch-and-vecpack-heads-v100-2026-10-11.md`). Packing divides
+  the block count, which only hurts with few K/V heads and short K/V.
 - Quantised K keeps Q as q8_1 (a few registers per column); F16/BF16 K keep Q as floats and are not packed.
 - **The key loops of packed instances are unrolled 4×** (fully unrolled they spill; not unrolled they were
   1.19–1.59× slower on the V100, median 1.40×). Registers on sm_70 (nvcc 12.8), all with 0 spill and 0 stack:
@@ -53,13 +57,13 @@ registers. On Maxwell it looked good (D=256 2.8–4.3×). On the V100 it lost in
 gave Llama q8_0 +0.6%: the per-block latency, not the K/V re-reads, dominated. Unrolling 4× fixed the latency,
 and the V100 grid replaced the 4/8 rule. Bench-only switches used for this are in the results' `*.patch` files.
 
-## Tests (60 new cases)
+## Tests (84 new cases)
 
 D 64/128/256 × q8_0/q4_0 × GQA 3/5/7/12 × sinks on/off, plus 2 sequences (GQA 6) and ALiBi (GQA 8, stays
-unpacked). With the final rule these cover 2 heads padded (GQA 3, 5) and exact (GQA 6, 2 sequences), 4 heads
+unpacked), plus GQA 2/3 with 8 K/V heads × sinks (24 more, 84 in total). With the final rule these cover 2 heads padded (GQA 3, 5) and exact (GQA 6, 2 sequences), 4 heads
 padded (GQA 7) and exact (GQA 12; GQA 4/8 come from `0004`'s cases).
 
 ## Not measured
 
-8 K/V heads at kernel level (the Llama end-to-end result has 8), GQA > 8, several sequences, f16 Qwen3.8-27B
-decode with 0007, perplexity, other architectures.
+16+ K/V heads, GQA > 8, several sequences, a GQA 2 model end to end, f16 Qwen3.8-27B decode with 0007,
+perplexity, other architectures.

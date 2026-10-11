@@ -1,0 +1,32 @@
+[02:43:15] e1 upstream r1 135 MHz, 34, 24.08 W
+[02:44:07] e1 conv8 r1 1380 MHz, 46, 44.74 W
+[02:44:59] e1 rev r1 1380 MHz, 47, 45.16 W
+[02:45:51] e1 upstream r2 1380 MHz, 47, 45.28 W
+[02:46:44] e1 conv8 r2 1380 MHz, 48, 45.36 W
+[02:47:36] e1 rev r2 1380 MHz, 48, 45.51 W
+[02:48:28] e1 upstream r3 1380 MHz, 48, 45.26 W
+[02:49:20] e1 conv8 r3 1380 MHz, 48, 45.46 W
+[02:50:13] e1 rev r3 1380 MHz, 48, 45.37 W
+[02:51:05] e2 nc1 r1 1380 MHz, 48, 45.27 W
+[02:55:21] e2 nc2 r1 1380 MHz, 45, 44.32 W
+[02:59:36] e2 nc4 r1 1320 MHz, 46, 41.52 W
+[03:03:55] e2 nc1 r2 1372 MHz, 46, 43.83 W
+[03:08:10] e2 nc2 r2 1380 MHz, 45, 44.62 W
+[03:12:26] e2 nc4 r2 1312 MHz, 46, 41.31 W
+[03:16:43] c llama-bench upstream r1 1380 MHz, 46, 44.03 W
+[03:16:50] c llama-bench fork r1 1380 MHz, 43, 47.14 W
+[03:16:57] c llama-bench upstream r2 1380 MHz, 42, 47.73 W
+[03:17:04] c llama-bench fork r2 1380 MHz, 42, 47.53 W
+[03:17:12] c nsys upstream pp16 1380 MHz, 42, 47.61 W
+[03:17:20] c nsys upstream pp1 1380 MHz, 40, 42.95 W
+[03:17:29] c nsys fork pp16 1380 MHz, 40, 42.86 W
+[03:17:38] c nsys fork pp1 1380 MHz, 39, 43.73 W
+[03:17:47] done 1380 MHz, 39, 43.15 W
+[03:56:24] qpn upstream r1 1372 MHz, 40, 42.27 W
+[03:56:31] qpn fork on r1 1380 MHz, 42, 46.36 W
+[03:56:39] qpn fork off r1 1380 MHz, 41, 46.85 W
+[03:56:46] qpn upstream r2 1380 MHz, 43, 46.17 W
+[03:56:53] qpn fork on r2 1380 MHz, 42, 46.27 W
+[03:57:00] qpn fork off r2 1380 MHz, 41, 46.95 W
+[03:57:08] nsys fork qpn-off pp16 1380 MHz, 43, 45.97 W
+[03:57:17] qpn done 1380 MHz, 40, 42.37 W

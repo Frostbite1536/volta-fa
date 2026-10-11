@@ -1,29 +1,31 @@
-From b763fe0265ecf6b7fe9d3de9b661fb0a7bfd628d Mon Sep 17 00:00:00 2001
+From b329f813d30d015019808650c87a401029c20205 Mon Sep 17 00:00:00 2001
 From: Frostbite1536 <125112776+Frostbite1536@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 13:27:55 -0500
 Subject: [PATCH 7/7] CUDA: FA vector kernel, pack the Q heads of a K/V head
  for single-token decode with quantized K
 
 With GQA the vector kernel ran one block per Q head, so each K/V head was read and
-dequantized once per Q head. For quantized K at one token and GQA >= 3, put 2 or 4 Q
-heads into one block (padded heads masked, including their sinks), with the MMA kernel's
-(sequence, K/V head, head group) grid mapping; for one head per block the indexing is
-unchanged. 4 heads per block for GQA ratios that are a multiple of 4 and for 7, otherwise 2
-(V100: 8 heads per block were never faster than 4; GQA 2 stays unpacked).
+dequantized once per Q head. For quantized K at one token, put 2 or 4 Q heads into one
+block (padded heads masked, including their sinks), with the MMA kernel's (sequence, K/V
+head, head group) grid mapping; for one head per block the indexing is unchanged. 4 heads
+per block for GQA ratios that are a multiple of 4 and for 7, otherwise 2. With fewer than
+8 K/V heads x sequences, GQA 2 stays unpacked and GQA 3 uses 2 heads per block: packing
+divides the block count, which is slower for short K/V with few K/V heads (V100). 8 heads
+per block were never faster than 4.
 
 Q is kept as q8_1 for quantized K, so the extra columns fit: on sm_70 the packed kernels
 use 76-163 registers with no spills or local memory, with their key loops unrolled 4x
 instead of fully, and the sink loop's columns indexed at compile time (which also removes
 most local memory from the existing 2-token kernels). The KQ buffer is sized for the
 softmax values too (ncols x nthreads), which 8 columns at D=64 exceeded.
-Tests: D 64/128/256, q8_0/q4_0, GQA 3/5/7/12, sinks, 2 sequences, ALiBi.
+Tests: D 64/128/256, q8_0/q4_0, GQA 3/5/7/12, sinks, 2 sequences, ALiBi; GQA 2/3 with 8 K/V heads.
 ---
- ggml/src/ggml-cuda/fattn-vec.cuh | 115 +++++++++++++++++++++----------
- tests/test-backend-ops.cpp       |  13 ++++
- 2 files changed, 91 insertions(+), 37 deletions(-)
+ ggml/src/ggml-cuda/fattn-vec.cuh | 120 +++++++++++++++++++++----------
+ tests/test-backend-ops.cpp       |  19 +++++
+ 2 files changed, 102 insertions(+), 37 deletions(-)
 
 diff --git a/ggml/src/ggml-cuda/fattn-vec.cuh b/ggml/src/ggml-cuda/fattn-vec.cuh
-index 57a285565..80e1972dd 100644
+index 57a285565..a3aa56219 100644
 --- a/ggml/src/ggml-cuda/fattn-vec.cuh
 +++ b/ggml/src/ggml-cuda/fattn-vec.cuh
 @@ -16,7 +16,8 @@ static constexpr __device__ int ggml_cuda_fattn_vec_get_nthreads_device() {
@@ -255,26 +257,31 @@ index 57a285565..80e1972dd 100644
  }
  
  template <int D, ggml_type type_K, ggml_type type_V>
-@@ -549,14 +571,33 @@ void ggml_cuda_flash_attn_ext_vec_case(ggml_backend_cuda_context & ctx, ggml_ten
+@@ -549,14 +571,38 @@ void ggml_cuda_flash_attn_ext_vec_case(ggml_backend_cuda_context & ctx, ggml_ten
      float logit_softcap;
      memcpy(&logit_softcap, (const float *) KQV->op_params + 2, sizeof(float));
  
 +    // Quantized K, one token: put the Q heads that share a K/V head into one block so that K/V are read and
 +    // dequantized once per 2 or 4 heads instead of once per Q head. 4 heads per block for GQA ratios that are a
-+    // multiple of 4 and for 7 (padded to 8, the extra head masked), otherwise 2 (GQA 3 and 5 padded to 4 and 6).
-+    // 8 heads per block were never faster than 4 on a V100, and GQA 2 is left unpacked (slower at 4K for D=256).
++    // multiple of 4 and for 7 (padded to 8, the extra head masked), otherwise 2 (GQA 5 padded to 6). Packing divides
++    // the number of blocks, which costs time for short K/V when there are few K/V heads: with fewer than 8 K/V heads
++    // (x sequences) GQA 2 stays unpacked and GQA 3 uses 2 heads per block, with 8 or more they use 2 and 4.
++    // 8 heads per block were never faster than 4 on a V100.
 +    // Q is kept as q8_1 for quantized K, so the packed columns fit in registers; F16/BF16 K keep Q as floats.
 +    if constexpr (type_K != GGML_TYPE_F16 && type_K != GGML_TYPE_BF16) {
 +        const int gqa_ratio = Q->ne[2] / dst->src[1]->ne[2];
++        const bool many_kv_heads = dst->src[1]->ne[2]*Q->ne[3] >= 8;
 +        float max_bias;
 +        memcpy(&max_bias, (const float *) KQV->op_params + 1, sizeof(float));
-+        if (Q->ne[1] == 1 && gqa_ratio >= 3 && max_bias == 0.0f && logit_softcap == 0.0f) {
-+            if (gqa_ratio % 4 == 0 || gqa_ratio == 7) {
++        if (Q->ne[1] == 1 && gqa_ratio >= 2 && max_bias == 0.0f && logit_softcap == 0.0f) {
++            if (gqa_ratio % 4 == 0 || gqa_ratio == 7 || (gqa_ratio == 3 && many_kv_heads)) {
 +                ggml_cuda_flash_attn_ext_vec_case_impl<D, 1, 4, type_K, type_V, false>(ctx, dst);
-+            } else {
-+                ggml_cuda_flash_attn_ext_vec_case_impl<D, 1, 2, type_K, type_V, false>(ctx, dst);
++                return;
 +            }
-+            return;
++            if (gqa_ratio > 2 || many_kv_heads) {
++                ggml_cuda_flash_attn_ext_vec_case_impl<D, 1, 2, type_K, type_V, false>(ctx, dst);
++                return;
++            }
 +        }
 +    }
 +
@@ -291,7 +298,7 @@ index 57a285565..80e1972dd 100644
          }
          return;
      }
-@@ -564,10 +605,10 @@ void ggml_cuda_flash_attn_ext_vec_case(ggml_backend_cuda_context & ctx, ggml_ten
+@@ -564,10 +610,10 @@ void ggml_cuda_flash_attn_ext_vec_case(ggml_backend_cuda_context & ctx, ggml_ten
      constexpr int cols_per_block = 2;
      if (logit_softcap == 0.0f) {
          constexpr bool use_logit_softcap = false;
@@ -305,15 +312,15 @@ index 57a285565..80e1972dd 100644
  }
  
 diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
-index 39b22f2dc..4dd5d307a 100644
+index 39b22f2dc..4b9926280 100644
 --- a/tests/test-backend-ops.cpp
 +++ b/tests/test-backend-ops.cpp
-@@ -11733,6 +11733,19 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
+@@ -11733,6 +11733,25 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
              test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {4, 1}, 4096, 1, true, false, 0, 10.0f, GGML_PREC_F32, type_KV, type_KV));
          }
      }
-+    // Quantized K at one token: the vector kernel packs the Q heads of a K/V head into one block (4 or 8, padded heads
-+    // masked, including their sinks); GQA 12 needs two blocks per K/V head, ALiBi keeps one Q head per block.
++    // Quantized K at one token: the vector kernel packs the Q heads of a K/V head into one block (2 or 4, padded heads
++    // masked, including their sinks); GQA 12 needs three blocks per K/V head, ALiBi keeps one Q head per block.
 +    for (int hs : { 64, 128, 256 }) {
 +        for (ggml_type type_KV : { GGML_TYPE_Q8_0, GGML_TYPE_Q4_0 }) {
 +            for (int gqa : { 3, 5, 7, 12 }) {
@@ -323,6 +330,12 @@ index 39b22f2dc..4dd5d307a 100644
 +            }
 +            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {6, 2}, 4096, 1, true, false, 0, 0, GGML_PREC_F32, type_KV, type_KV));
 +            test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 2, {8, 1}, 4096, 1, true, false, 8.0f, 0, GGML_PREC_F32, type_KV, type_KV));
++            // With 8 K/V heads GQA 2 is packed too, and GQA 3 uses 4 heads per block.
++            for (int gqa : { 2, 3 }) {
++                for (bool sinks : { false, true }) {
++                    test_cases.emplace_back(new test_flash_attn_ext(hs, hs, 8, {gqa, 1}, 4096, 1, true, sinks, 0, 0, GGML_PREC_F32, type_KV, type_KV));
++                }
++            }
 +        }
 +    }
  
