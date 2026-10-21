@@ -62,4 +62,6 @@ An Opus 5.5 manager plus GPT-6.1 Sol workers (via Codex), adapted from the `opus
 
 ## License
 
-TBD (suggest Apache-2.0 or MIT to stay compatible with llama.cpp's MIT).
+AGPL-3.0 ([LICENSE](LICENSE)). The patch series in `third_party/patches/` is additionally
+available under llama.cpp's MIT license so it can be merged upstream without relicensing
+this repo; everything else is AGPL-3.0 only.
