@@ -94,8 +94,9 @@ rebased past the pinned commit. The repo's own harness (`bench/phase0.sh`,
 - **Upstreaming:** 0001 (crash fix) is the clearest candidate; 0005/0006 conversions
   are architecture-independent and need one non-Volta timing; 0003 extends PR #27997
   with measured data.
-- **Dual-GPU PCIe P2P tensor-parallel** — the P2P code exists and is unit-tested,
-  but needs two cards to measure (the target machine arrives ~Nov 2026). Upstream's
+- **Multi-GPU PCIe P2P tensor-parallel** — the P2P code exists and is unit-tested,
+  but needs the target machine to measure (8× V100 32 GB PCIe behind PCIe switches,
+  ~Nov 2026; 2 cards first, then 4). Upstream's
   tensor-split all-reduce has no direct device-to-device path.
 - **Open questions:** the D=256 f16 single-token 0.96× scheduling artifact; a GQA 2
   model end-to-end (Gemma 2/3).

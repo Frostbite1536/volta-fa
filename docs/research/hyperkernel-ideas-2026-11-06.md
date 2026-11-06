@@ -63,7 +63,7 @@ an input" is already on the ROADMAP Next list.
 ### 3. Direct GPU-to-GPU exchange inside a kernel (Phase 3)
 
 Hyperkernel maps every rank's memory into one address range, and kernels write partial results directly into peer
-memory, then signal with flags. The dual-V100 PCIe equivalent is:
+memory, then signal with flags. The multi-V100 PCIe equivalent is:
 - `cudaDeviceEnablePeerAccess`;
 - the producing kernel stores its partial sums to the peer's buffer through the peer pointer;
 - it then publishes a release flag that the consumer polls with acquire loads.
@@ -72,10 +72,11 @@ That is a one-shot all-reduce that can overlap with the matmul epilogue. It targ
 `llama-cpp-volta-baseline.md`: upstream's internal all-reduce (`GGML_CUDA_ALLREDUCE=internal`) is staged through
 pinned host memory and never uses P2P.
 
-- **Precondition:** the two home-box V100s must support P2P with each other (same PCIe switch or root complex). The
-  P-7 topology probe (`include/volta_fa/p2p.h`, `bench/p2p_bandwidth`) answers this on day one.
+- **Precondition:** the cards in the tensor-parallel group must support P2P with each other. The home box (updated
+  2026-11-06) is 8× V100-PCIE-32GB behind PCIe switches. `nvidia-smi topo -m` and the P-7 topology probe
+  (`include/volta_fa/p2p.h`, `bench/p2p_bandwidth`) show which cards share a switch on day one.
 - Not run.
-- Phase 3 already excludes NVLink and more than 2 GPUs. Multicast has no PCIe equivalent.
+- Phase 3 excludes NVLink and more than 4 GPUs. Multicast has no PCIe equivalent.
 
 ### Lower priority
 
@@ -98,4 +99,4 @@ pinned host memory and never uses P2P.
 
 1. Owner decision on P-9 option (b) (idea 1): it has the most measured evidence behind it.
 2. On the home box, measure the inter-kernel idle time before any design work on idea 2.
-3. Fold idea 3 into the Phase 3 design once the P2P probe has run on the dual-V100 machine.
+3. Fold idea 3 into the Phase 3 design once the P2P probe has run on the home box.

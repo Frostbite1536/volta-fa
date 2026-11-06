@@ -65,10 +65,11 @@ Phases have explicit exclusions. Exit criteria for Phases 0–3 are measured on 
 
 ## Phase 3: P2P tensor-parallel communication
 
-**Goal**: Reduce dual-V100 PCIe stalls.
-**Includes**: start from what llama.cpp's split modes already do (P-3); peer-copy microbench; overlap of partial-result exchange with compute; staged fallback; nsys timelines showing overlap.
-**Excludes**: NVLink paths; more than 2 GPUs.
-**Exit**: measured tok/s change on a real dual-GPU run, or a documented negative result.
+**Hardware (updated 2026-11-06):** the home box is a Tyan server with 8× V100-PCIE-32GB behind PCIe switches; the owner starts with 2–4 cards.
+**Goal**: Reduce multi-V100 PCIe stalls: 2 GPUs first, then 4 behind one PCIe switch.
+**Includes**: `nvidia-smi topo -m` plus the P-7 probe on day one (which cards share a switch: PIX/PXB; P2P within and across switch groups); start from what llama.cpp's split modes already do (P-3); peer-copy microbench; a small-message in-kernel P2P all-reduce (design input: `docs/research/revolta-2026-11-06.md` §1, whose 4-GPU PCIe-switch mode matches this box); overlap of partial-result exchange with compute; staged fallback; nsys timelines showing overlap.
+**Excludes**: NVLink paths; more than 4 GPUs; a tensor-parallel group that spans switch groups.
+**Exit**: measured tok/s change on a real 2-GPU run (and a 4-GPU run if the 2-GPU result justifies it), or a documented negative result.
 
 ## Phase 4: Publish
 

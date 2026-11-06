@@ -6,12 +6,12 @@ Fused FP16 attention and PCIe peer-to-peer tensor-parallel kernels for NVIDIA Vo
 
 ## Why
 
-Used V100 32GB cards are cheap and common in homelabs and small AI shops, but modern attention work targets Ampere and newer. The goal is better long-context prefill and dual-GPU (no NVLink) decode on Volta:
+Used V100 32GB cards are cheap and common in homelabs and small AI shops, but modern attention work targets Ampere and newer. The goal is better long-context prefill and multi-GPU (2–4 cards over PCIe, no NVLink) decode on Volta:
 
 1. **Prefill speed.** Less time to first token on large prompts.
 2. **Context length.** Fused attention never materialises the N×N score matrix, so VRAM stops spiking with context.
 3. **Model compatibility.** Head dims, GQA ratios and masking modes that the stock Volta path handles slowly or not at all.
-4. **Dual-GPU smoothness.** Overlap tensor-parallel transfers with compute over PCIe P2P.
+4. **Multi-GPU smoothness.** Overlap tensor-parallel transfers with compute over PCIe P2P.
 5. **Power and heat.** Fewer cycles at full draw, if (and only if) the benchmarks show it.
 
 ## Read this before trusting the plan
