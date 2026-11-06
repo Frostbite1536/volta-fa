@@ -25,8 +25,8 @@ The largest change also makes the arithmetic *more* accurate than before, not le
 
 **The graphics card.** AI models run on GPUs (graphics cards), because GPUs do thousands of small calculations at
 once. The V100 came out in 2017. It is no longer the newest, but it has 32 GB of fast memory and special
-"tensor core" circuits for AI maths, and it is widely available second-hand. The owner is building a machine with
-two of them.
+"tensor core" circuits for AI maths, and it is widely available second-hand. The owner has bought a server with
+eight of them and will start with two to four.
 
 **llama.cpp.** A widely used open-source program that runs AI language models on your own computer. Most of its
 speed work targets newer cards, so older cards like the V100 get less attention. That gap is where this project
@@ -156,14 +156,14 @@ finding the owner may report.
   weights in memory when the model loads, plus model-specific shortcuts. Copying that would mean rebuilding most of
   that version, and llama.cpp is unlikely to accept it. The recommendation is to stop here and offer the cleaner
   changes upstream.
-- **Two cards working together** (the owner's machine will have two V100s): the software groundwork exists, but it
-  can only be tested once the real machine arrives.
+- **Several cards working together** (the owner's server has eight V100s; the first experiments use two, then
+  four): the software groundwork exists, but it can only be tested on the real machine.
 
 ## What happens next
 
 1. **Upstreaming:** the owner decides which changes to offer to llama.cpp and writes those submissions. A per-patch
    fact sheet supports that: [PATCH_DATASHEETS.md](PATCH_DATASHEETS.md).
-2. **The home machine (about November 2026):** two-card experiments, and the smaller leftover items: 2–4 token
+2. **The home machine (about November 2026):** experiments with two and then four cards, and the smaller leftover items: 2–4 token
    batches, two more compression formats, and combining matrix steps that share an input.
 3. **Sibling projects** apply the same method to two other cards: the NVIDIA P100 (`~/Github/P100`) and the Intel
    Arc A770 (`~/Github/A770`).

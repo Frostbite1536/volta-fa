@@ -10,7 +10,7 @@ nsys profile --stats=true -o profiles/raw/llama-prefill \
 nvidia-smi topo -m
 ```
 
-Look for: time split between attention and matmul kernels, gaps between kernels, PCIe copy time in dual-GPU runs.
+Look for: time split between attention and matmul kernels, gaps between kernels, PCIe copy time in multi-GPU runs.
 
 ## Kernel view (ncu)
 
